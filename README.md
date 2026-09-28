@@ -1,21 +1,19 @@
-# AutoCare
+# AutoCare Automotive Service Platform
 
-A premium, responsive automotive service website built with Next.js, TypeScript, and Tailwind CSS.
-
-AutoCare is designed as a reusable, company-ready template for a modern car maintenance, diagnostics, repairs, and preventive care business. It is structured so the brand, service list, pricing, locations, testimonials, FAQs, and contact details can all be updated from a central configuration layer without redesigning the UI.
+A modern automotive service website and operations platform built with Next.js, React, TypeScript, and Tailwind CSS. The project combines a customer-facing business website with a protected internal admin dashboard for bookings, conversations, customer records, and operational support.
 
 ## Overview
 
-This project is inspired by the conversion-focused structure of professional automotive service brands but implemented as an original, reusable template for a real automotive company. It includes:
+AutoCare is designed for a Philippine automotive service business with mobile and workshop operations. It includes:
 
-- Premium landing page experience
-- Service catalog and detail pages
-- Booking flow and quote request form
-- Vehicle brand support pages
-- Service area coverage pages
-- Blog/resources section
-- About and contact pages
-- Mobile-responsive layout and modern styling
+- Premium customer-facing website and landing pages
+- Multi-step booking flow and service request system
+- Vehicle, service, and branch content driven from configuration data
+- AI-powered customer service assistant using Ollama and Qwen 2.5 7B
+- Protected admin dashboard for operations and staff control
+- Appointment and inquiry management views
+- Customer conversation inbox and AI escalation flow
+- Role-based access for admin, manager, and staff users
 
 ## Tech Stack
 
@@ -24,43 +22,84 @@ This project is inspired by the conversion-focused structure of professional aut
 - TypeScript
 - Tailwind CSS
 - Lucide React icons
+- Ollama + local AI model integration
+
+## Current Features
+
+### Customer-facing app
+- Responsive automotive service home page
+- Service catalog and service detail pages
+- Booking flow for vehicle, service, location, date, and contact details
+- Quote request forms and customer contact pages
+- Vehicle brand and branch/service area pages
+- Blog and resource sections
+- SEO-friendly app-router structure
+
+### AI customer service
+- Local AI assistant integrated with the website
+- Philippine-market service and pricing context
+- Safety-aware responses for critical vehicle concerns
+- Fallback messaging if the model is unavailable
+- Role-aware prompt behavior and permission checks
+
+### Admin operations dashboard
+- Protected /admin route with login flow
+- Dashboard overview for bookings, pending work, escalations, and activity
+- Appointment management screens and detail views
+- Customer management and operational records
+- Chat inbox for customer/AI/staff conversations
+- Inquiry management and escalation tracking
+- Role-aware access: admin, manager, staff
 
 ## Project Structure
 
 ```bash
 src/
   app/
+    admin/
+    api/
+    ...customer pages
   components/
+    admin/
+    ai/
+    booking/
+    layout/
+    ui/
   config/
   lib/
+    ai/
+    admin-data.ts
+    admin-auth.ts
   types/
 public/
 ```
 
-### Main configuration files
+### Key configuration files
 
-- `src/config/company.ts` — company profile, branding, navigation, hero, contact, and business data
-- `src/config/services.ts` — services, pricing, features, and detail content
-- `src/config/vehicles.ts` — supported brands and models
-- `src/config/locations.ts` — service areas and city coverage
-- `src/config/faqs.ts` — FAQ content
-- `src/config/blog.ts` — blog/article data
-- `src/config/images.ts` — centralized image references
+- `src/config/company.ts` — brand, contact, service business profile, and site content
+- `src/config/services.ts` — service catalog and pricing data
+- `src/config/vehicles.ts` — vehicle brands and supported models
+- `src/config/locations.ts` — service areas, provinces, and city coverage
+- `src/config/faqs.ts` — customer support FAQ content
+- `src/config/blog.ts` — resources and article content
 
-This makes the project easy to adapt for another automotive company without refactoring the visual system.
+## Admin Access
 
-## Features
+The admin dashboard is protected and requires a valid session.
 
-- Responsive design for desktop, tablet, and mobile
-- Reusable content-driven architecture
-- Multi-step booking wizard
-- Quote request form with validation
-- Service detail pages with dynamic content
-- Vehicle and location browsing
-- SEO-friendly page structure
-- Accessible UI patterns and semantic markup
+Default local demo credentials used in the app:
 
-## Getting Started
+- admin / admin123
+- manager / manager123
+- staff / staff123
+
+Access the dashboard at:
+
+```bash
+http://localhost:3000/admin
+```
+
+## Local Development
 
 ### Install dependencies
 
@@ -68,7 +107,7 @@ This makes the project easy to adapt for another automotive company without refa
 npm install
 ```
 
-### Run locally
+### Run the app
 
 ```bash
 npm run dev
@@ -80,53 +119,32 @@ Then open:
 http://localhost:3000
 ```
 
-## Production build
+## Production Build
 
 ```bash
 npm run build
 ```
 
-## Recommended GitHub repo name
-
-Good options:
-
-- `autocare-site`
-- `autocare-auto-service`
-- `autocare-website`
-- `autocare-automotive-brand`
-
-Recommended repo description:
-
-> Premium responsive automotive service website built with Next.js and Tailwind CSS for a mobile and workshop-based car care business.
-
-## Suggested Git commands
-
-After creating the repo on GitHub, run:
+## Testing
 
 ```bash
-git init
-git add .
-git commit -m "Initial commit: AutoCare automotive service website"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<your-repo-name>.git
-git push -u origin main
+npm test
 ```
 
-## Notes for future developers
+## Notes
 
-- Update the brand and business information in `src/config/company.ts`
-- Replace imagery in `src/config/images.ts`
-- Add or edit services in `src/config/services.ts`
-- Keep the UI generic and reuse the layout; do not hardcode company-specific copy into components
+- The app is intentionally structured around local configuration and app-driven content rather than a full database-first backend.
+- The admin dashboard uses the current project architecture and local data patterns without breaking the customer-facing website.
+- Ollama must be installed and the configured model available locally for the AI assistant to respond beyond fallback messaging.
 
 ## License
 
-This project is intended for demo, portfolio, or business website use. Add your preferred license before publishing publicly.
+This project is intended for business, portfolio, or demo use. Add your preferred license before publishing publicly.
 
-## Future improvements
+## Future roadmap
 
-- CMS/API integration
-- Real booking backend
-- Admin dashboard for service and content updates
-- Real map integration
-- Payment and scheduling workflows
+- Connect the admin dashboard to a real database backend
+- Add persistent appointment and chat storage
+- Add real authentication integration with a production identity provider
+- Add richer reporting, analytics, and real-time updates
+- Expand admin workflows for service operations and team management
