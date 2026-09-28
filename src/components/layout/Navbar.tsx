@@ -29,41 +29,57 @@ export function Navbar() {
 
   const bar = scrolled || open
     ? "bg-primary/95 backdrop-blur-md border-b border-white/10 text-inverted"
-    : "bg-transparent text-inverted";
+    : "bg-[#071827]/85 backdrop-blur-sm border-b border-white/10 text-inverted";
 
   return (
     <header className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${bar}`}>
-      <div className="mx-auto flex max-w-[72rem] items-center justify-between gap-4 px-5 sm:px-8 h-[72px]">
-        <div className="[&_span]:text-inverted">
+      <div className="mx-auto flex h-[84px] max-w-[1600px] items-center justify-between gap-5 px-5 sm:px-8 xl:px-10">
+        <div className="flex min-w-[180px] items-center [&_span]:text-inverted">
           <Logo inverted />
         </div>
-        <nav className="hidden lg:flex items-center gap-7 text-[13px] tracking-[0.08em] uppercase">
+
+        <nav className="hidden flex-1 items-center justify-center gap-7 text-[11px] font-medium tracking-[0.18em] uppercase text-inverted/80 xl:flex">
           {site.navigation.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="text-inverted/75 hover:text-inverted transition"
+              className="transition hover:text-inverted"
             >
               {item.label}
             </Link>
           ))}
         </nav>
-        <div className="hidden md:flex items-center gap-3">
+
+        <div className="hidden items-center gap-3 lg:flex">
           <a
             href={company.phoneHref}
-            className="hidden xl:inline-flex items-center gap-2 text-sm text-inverted/80"
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-medium tracking-[0.14em] text-inverted/80 uppercase"
           >
-            <Phone className="h-4 w-4 text-accent" />
-            {company.phone}
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-accent">
+              <Phone className="h-4 w-4" />
+            </span>
+            <span className="leading-none">{company.phone}</span>
           </a>
-          <Button href="/quote" variant="secondary" className="text-inverted border-white/25">
+
+          <Button
+            href="/quote"
+            variant="secondary"
+            className="h-[52px] min-w-[150px] border border-white/20 bg-white/5 text-[11px] tracking-[0.18em] text-inverted hover:bg-white/10"
+          >
             {site.hero.secondaryCTA.label.replace("Free ", "")}
           </Button>
-          <Button href={site.hero.primaryCTA.href}>{site.hero.primaryCTA.label}</Button>
+
+          <Button
+            href={site.hero.primaryCTA.href}
+            className="h-[52px] min-w-[154px] bg-[#d18b3f] text-[11px] tracking-[0.18em] text-[#091827] shadow-[0_0_0_1px_rgba(255,255,255,0.12)] hover:brightness-110"
+          >
+            {site.hero.primaryCTA.label}
+          </Button>
         </div>
+
         <button
           type="button"
-          className="lg:hidden p-2 text-inverted"
+          className="p-2 text-inverted lg:hidden"
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
@@ -71,15 +87,16 @@ export function Navbar() {
           {open ? <X /> : <Menu />}
         </button>
       </div>
+
       {open ? (
-        <div className="lg:hidden border-t border-white/10 bg-primary px-5 py-6">
+        <div className="border-t border-white/10 bg-primary px-5 py-6 lg:hidden">
           <nav className="flex flex-col gap-4 text-lg">
             {site.navigation.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className="text-inverted py-1"
+                className="py-1 text-inverted"
               >
                 {item.label}
               </Link>

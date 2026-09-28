@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 :root {
+  --font-space-grotesk: "Segoe UI", "Arial", sans-serif;
+  --font-dm-sans: "Segoe UI", "Arial", sans-serif;
   --brand-primary: #0b1320;
   --brand-secondary: #162433;
   --brand-accent: #c47a2c;
