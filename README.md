@@ -9,7 +9,7 @@ AutoCare is designed for a Philippine automotive service business with mobile an
 - Premium customer-facing website and landing pages
 - Multi-step booking flow and service request system
 - Vehicle, service, and branch content driven from configuration data
-- AI-powered customer service assistant using Ollama and Qwen 2.5 7B
+- AI-powered customer service assistant using Google Gemini (`gemini-3.8-flash` by default)
 - Protected admin dashboard for operations and staff control
 - Appointment and inquiry management views
 - Customer conversation inbox and AI escalation flow
@@ -22,7 +22,7 @@ AutoCare is designed for a Philippine automotive service business with mobile an
 - TypeScript
 - Tailwind CSS
 - Lucide React icons
-- Ollama + local AI model integration
+- Google Gemini API integration via `@google/genai` (server-side only)
 
 ## Current Features
 
@@ -36,7 +36,8 @@ AutoCare is designed for a Philippine automotive service business with mobile an
 - SEO-friendly app-router structure
 
 ### AI customer service
-- Local AI assistant integrated with the website
+- Server-side AI assistant integrated with the website
+- Google Gemini API inference (`GEMINI_MODEL`, default `gemini-3.8-flash`)
 - Philippine-market service and pricing context
 - Safety-aware responses for critical vehicle concerns
 - Fallback messaging if the model is unavailable
@@ -119,6 +120,19 @@ Then open:
 http://localhost:3000
 ```
 
+### AI assistant (Google Gemini)
+
+The chat UI calls `/api/ai/chat` on the server. The Gemini API key stays on the server and is never sent to the browser.
+
+Copy `.env.example` to `.env.local` and set:
+
+```bash
+GEMINI_API_KEY=your_google_gemini_api_key
+GEMINI_MODEL=gemini-3.8-flash
+```
+
+On Vercel, add the same variables in Project Settings → Environment Variables. Do not use a `NEXT_PUBLIC_` prefix for the API key.
+
 ## Production Build
 
 ```bash
@@ -135,7 +149,7 @@ npm test
 
 - The app is intentionally structured around local configuration and app-driven content rather than a full database-first backend.
 - The admin dashboard uses the current project architecture and local data patterns without breaking the customer-facing website.
-- Ollama must be installed and the configured model available locally for the AI assistant to respond beyond fallback messaging.
+- `GEMINI_API_KEY` must be set in the server environment (local `.env.local` or Vercel project settings) for the AI assistant to respond beyond fallback messaging.
 
 ## License
 

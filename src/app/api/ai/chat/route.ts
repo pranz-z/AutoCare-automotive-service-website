@@ -7,6 +7,7 @@ import {
   getRolePermissions,
   normalizeRole,
 } from "@/lib/ai/assistant";
+import { generateGeminiReply, getGeminiModel, isGeminiConfigured } from "@/lib/ai/gemini";
 import { appendMessage, getRecentHistory, getSession, updateDraft } from "@/lib/ai/session-store";
 
 const FALLBACK_MESSAGE =
@@ -70,41 +71,6 @@ function getFallbackReply(message: string, role: string) {
   return `We currently offer ${serviceNames}. I can help you check the best service for your vehicle and guide you through the next steps.`;
 }
 
-async function callOllama(prompt: string) {
-  const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
-  const model = process.env.OLLAMA_MODEL ?? "llama3.2:3b";
-
-  const response = await fetch(`${baseUrl}/api/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "user", content: prompt }],
-      stream: false,
-      options: {
-        temperature: 0.3,
-        top_p: 0.9,
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Ollama request failed with status ${response.status}`);
-  }
-
-  const payload = await response.json();
-  return typeof payload?.message?.content === "string"
-    ? payload.message.content
-    : typeof payload?.content === "string"
-      ? payload.content
-      : typeof payload?.response === "string"
-        ? payload.response
-        : "I’m ready to help with your maintenance or booking question.";
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -151,9 +117,9 @@ export async function POST(request: NextRequest) {
     let reply = "";
 
     try {
-      reply = await callOllama(prompt);
+      reply = await generateGeminiReply(prompt);
     } catch (error) {
-      console.error("Ollama AI request failed", error);
+      console.error("Gemini AI request failed", error);
       reply = getFallbackReply(message, role);
     }
 
@@ -197,11 +163,12 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   const brands = getVehicleBrands();
   const services = getServices();
+  const configured = isGeminiConfigured();
   return Response.json({
-    ok: true,
-    status: "ready",
-    model: process.env.OLLAMA_MODEL ?? "llama3.2:3b",
-    baseUrl: (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, ""),
+    ok: configured,
+    status: configured ? "ready" : "offline",
+    provider: "google-gemini",
+    model: getGeminiModel(),
     servicesCount: services.length,
     brandCount: brands.length,
   });

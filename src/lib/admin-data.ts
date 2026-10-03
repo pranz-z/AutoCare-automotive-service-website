@@ -294,7 +294,7 @@ export const adminChats: ChatConversation[] = [
     },
     messages: [
       { id: "m-1", sender: "customer", senderLabel: "Customer", content: "How much is the preventive maintenance package for my Civic?", time: "9:10 AM" },
-      { id: "m-2", sender: "ai", senderLabel: "AI Assistant", content: "Our current PMS package starts at ₱ 3,200 for the standard preventive maintenance service.", time: "9:11 AM", metadata: "Qwen 2.5 7B • Service Database • 1.8s" },
+      { id: "m-2", sender: "ai", senderLabel: "AI Assistant", content: "Our current PMS package starts at ₱ 3,200 for the standard preventive maintenance service.", time: "9:11 AM", metadata: "Gemini 3.8 Flash • Service Database • 1.8s" },
       { id: "m-3", sender: "customer", senderLabel: "Customer", content: "Can I book tomorrow morning?", time: "9:12 AM" },
       { id: "m-4", sender: "ai", senderLabel: "AI Assistant", content: "We can check the early slot for your preferred branch and service.", time: "9:13 AM" },
       { id: "m-5", sender: "system", senderLabel: "System", content: "AI escalated to staff due to booking follow-up needs.", time: "9:14 AM" },

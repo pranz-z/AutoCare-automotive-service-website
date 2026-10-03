@@ -49,3 +49,40 @@ test('role permissions are enforced for customer, branch staff and master admin'
     canViewAllData: true,
   });
 });
+
+test('Gemini model is configurable through environment variables', async () => {
+  const { DEFAULT_GEMINI_MODEL, getGeminiModel, isGeminiConfigured } = await import('../src/lib/ai/gemini');
+  const previousModel = process.env.GEMINI_MODEL;
+  const previousGeminiKey = process.env.GEMINI_API_KEY;
+  const previousGoogleKey = process.env.GOOGLE_API_KEY;
+
+  delete process.env.GEMINI_MODEL;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_API_KEY;
+
+  assert.equal(getGeminiModel(), DEFAULT_GEMINI_MODEL);
+  assert.equal(isGeminiConfigured(), false);
+
+  process.env.GEMINI_MODEL = 'gemini-custom-test';
+  process.env.GEMINI_API_KEY = 'test-key';
+  assert.equal(getGeminiModel(), 'gemini-custom-test');
+  assert.equal(isGeminiConfigured(), true);
+
+  if (previousModel === undefined) {
+    delete process.env.GEMINI_MODEL;
+  } else {
+    process.env.GEMINI_MODEL = previousModel;
+  }
+
+  if (previousGeminiKey === undefined) {
+    delete process.env.GEMINI_API_KEY;
+  } else {
+    process.env.GEMINI_API_KEY = previousGeminiKey;
+  }
+
+  if (previousGoogleKey === undefined) {
+    delete process.env.GOOGLE_API_KEY;
+  } else {
+    process.env.GOOGLE_API_KEY = previousGoogleKey;
+  }
+});
