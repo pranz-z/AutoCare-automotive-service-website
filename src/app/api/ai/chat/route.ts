@@ -1,175 +1,55 @@
 import { NextRequest } from "next/server";
-import { getCompany, getLocations, getServices, getVehicleBrands } from "@/lib/content";
-import {
-  buildAiPrompt,
-  detectSafetyIssue,
-  getRelevantContext,
-  getRolePermissions,
-  normalizeRole,
-} from "@/lib/ai/assistant";
 import { generateGeminiReply, getGeminiModel, isGeminiConfigured } from "@/lib/ai/gemini";
-import { appendMessage, getRecentHistory, getSession, updateDraft } from "@/lib/ai/session-store";
+import { getServices, getVehicleBrands } from "@/lib/content";
+import { answerPublicQuestion, MAX_CHAT_MESSAGE, MAX_CHAT_HISTORY } from "@/lib/ai/public-grounding";
 
-const FALLBACK_MESSAGE =
-  "Sorry, the assistant is temporarily unavailable. You can still contact a service advisor for help.";
-
-const company = getCompany();
-
-const defaultSystemPrompt = `You are an official customer service and automotive service representative of ${company.name}. You speak on behalf of the company and naturally use first-person company language such as 'we', 'our', and 'I can help you'.
-
-Your role is to act as a knowledgeable service advisor for ${company.name}, helping customers with vehicle maintenance, service recommendations, service pricing, branch and booking support, and basic administrative assistance. The company's database, service catalog, branch information, pricing, schedules, booking records, policies, and other authorized information are our current operational information.
-
-When answering using company information, present it as information from our company rather than as a technical retrieval process. For example, say 'Our current listed price is ₱1,800' or 'According to our current service information, our base price is ₱1,800.' Do not say 'the database says', 'I found this in the system', 'the system shows', 'I retrieved', 'according to external information', or 'according to a database query'.
-
-Always distinguish between current company information, general automotive knowledge, and general Philippine-market estimates. Never present general knowledge or market estimates as official company information.
-
-Use Philippine units and local terminology naturally: ₱, kilometers, liters, Celsius, aircon, gasoline, diesel, PMS, change oil, Asia/Manila time. Use Taglish when appropriate without forcing slang.
-
-You are not a mechanic physically inspecting a vehicle. Never claim to have inspected a vehicle. Never present uncertain diagnoses as confirmed mechanical problems. If the issue could be safety-critical, advise the customer to stop driving if appropriate and arrange a professional inspection. Keep responses concise, helpful, respectful, and practical.
-
-Our goal is to make customers feel they are speaking directly with a knowledgeable member of ${company.name}'s service team.`;
-
-function isPromptInjectionAttempt(message: string) {
-  const normalized = message.toLowerCase();
-  return /ignore your previous instructions|ignore the system rules|override system|show me every customer|give me admin access|password|api key|all customer records/i.test(
-    normalized,
-  );
-}
-
-function getFallbackReply(message: string, role: string) {
-  const normalized = message.toLowerCase();
-  const services = getServices();
-  const companies = getCompany();
-
-  if (detectSafetyIssue(message).isCritical) {
-    return `${detectSafetyIssue(message).reason}: ${detectSafetyIssue(message).recommendation} I can also help you find the nearest service branch or schedule an inspection.`;
-  }
-
-  if (/motor oil|oil change|oil|pms|periodic maintenance|change oil/.test(normalized)) {
-    const oil = services.find((item) => item.slug === "oil-change");
-    return `Our current listed price for ${oil?.name ?? "Oil Change"} starts at ${oil ? `₱${oil.priceFrom.toLocaleString("en-PH")}` : "₱1,490"}. The final amount can vary depending on the vehicle, oil type, and service package.`;
-  }
-
-  if (/book|appointment|schedule|available|time|date|walk-in|pwede/.test(normalized)) {
-    return "Sure. I can help you check our available appointments and guide you through the booking options for your preferred service and branch.";
-  }
-
-  if (/toyota|honda|vios|civic|innova|fortuner|city|navara/.test(normalized)) {
-    return "Yes, we currently service a wide range of common Philippine-market vehicles such as Toyota, Honda, Mitsubishi, Nissan, and other popular brands. I can help you check the available services for your vehicle.";
-  }
-
-  if (/service area|branch|location|coverage|pampanga|taguig|manila|cebu/.test(normalized) || role.includes("admin")) {
-    const locations = getLocations();
-    const coverage = locations
-      .slice(0, 4)
-      .map((area) => area.province)
-      .join(", ");
-    return `We currently serve areas such as ${coverage}. I can help you check the exact branch and service availability for your location.`;
-  }
-
-  const serviceNames = services.slice(0, 4).map((item) => item.name).join(", ");
-  return `We currently offer ${serviceNames}. I can help you check the best service for your vehicle and guide you through the next steps.`;
-}
+export const runtime = "nodejs";
+const MAX_BODY_BYTES = 4096;
+const WINDOW_MS = 60_000;
+const MAX_REQUESTS = 12;
+const requests = new Map<string, { count: number; expires: number }>();
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const message = String(body?.message ?? "").trim();
-
-    if (!message) {
-      return Response.json({ ok: false, error: "A message is required." }, { status: 400 });
-    }
-
-    const role = normalizeRole(String(body?.role ?? "customer"));
-    const permissions = getRolePermissions(role);
-    const sessionId = String(body?.sessionId ?? "default-session");
-    const currentHistory = getRecentHistory(sessionId, 8)
-      .map((entry) => ({ role: entry.role, content: entry.content }))
-      .slice(-8);
-
-    appendMessage(sessionId, "user", message);
-
-    if (isPromptInjectionAttempt(message)) {
-      const refusal = "I can only operate within the permissions of the current user role. If you need account or administrative help, please contact a service advisor.";
-      appendMessage(sessionId, "assistant", refusal);
-      return Response.json({ ok: true, reply: refusal, sessionId, role, permissions, safety: false });
-    }
-
-    const safety = detectSafetyIssue(message);
-    const context = getRelevantContext(message, role);
-    const prompt = buildAiPrompt({
-      systemPrompt: defaultSystemPrompt,
-      userRole: role,
-      request: message,
-      history: currentHistory,
-      context,
-    });
-
-    if (safety.isCritical) {
-      const reply = `${safety.reason}: ${safety.recommendation} I can also help you find the nearest service branch or arrange a service advisor follow-up.`;
-      appendMessage(sessionId, "assistant", reply);
-      updateDraft(sessionId, {
-        service: message,
-      });
-      return Response.json({ ok: true, reply, sessionId, role, permissions, safety });
-    }
-
-    let reply = "";
-
-    try {
-      reply = await generateGeminiReply(prompt);
-    } catch (error) {
-      console.error("Gemini AI request failed", error);
-      reply = getFallbackReply(message, role);
-    }
-
-    if (/book|appointment|schedule|available|date|time/.test(message.toLowerCase())) {
-      const serviceMatch = getServices().find((service) => message.toLowerCase().includes(service.name.toLowerCase()));
-      const branchMatch = getLocations().flatMap((area) => area.cities.map((city) => city.name)).find((city) => message.toLowerCase().includes(city.toLowerCase()));
-      if (serviceMatch || branchMatch) {
-        const serviceLine = serviceMatch ? `Service: ${serviceMatch.name}` : "Service: not selected yet";
-        const branchLine = branchMatch ? `Branch: ${branchMatch}` : "Branch: to be confirmed";
-        const followUp = `${serviceLine}. ${branchLine}. Please confirm your preferred date and vehicle, and I can help you continue the booking.`;
-        reply = `${reply} ${followUp}`;
-      }
-    }
-
-    appendMessage(sessionId, "assistant", reply);
-    const session = getSession(sessionId);
-
-    return Response.json({
-      ok: true,
-      reply,
-      sessionId,
-      role,
-      permissions,
-      safety,
-      context,
-      bookingDraft: session.draft,
-    });
-  } catch (error) {
-    console.error("AI route failed", error);
-    return Response.json(
-      {
-        ok: false,
-        reply: FALLBACK_MESSAGE,
-        error: "The assistant is temporarily unavailable. Please contact a service advisor.",
-      },
-      { status: 500 },
-    );
+  const key = request.headers.get("x-real-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const now = Date.now();
+  const entry = requests.get(key);
+  if (entry && entry.expires > now && entry.count >= MAX_REQUESTS) {
+    return Response.json({ ok: false, reply: "Please wait a minute before asking again." }, { status: 429 });
   }
+  requests.set(key, entry && entry.expires > now ? { ...entry, count: entry.count + 1 } : { count: 1, expires: now + WINDOW_MS });
+
+  let body: unknown;
+  try {
+    if (Number(request.headers.get("content-length") || 0) > MAX_BODY_BYTES) throw new Error("Request too large");
+    const raw = await request.text();
+    if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) throw new Error("Request too large");
+    body = JSON.parse(raw);
+  } catch {
+    return Response.json({ ok: false, error: "Invalid or oversized request." }, { status: 400 });
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return Response.json({ ok: false, error: "Invalid request." }, { status: 400 });
+  }
+  const value = body as Record<string, unknown>;
+  if (typeof value.message !== "string" || !value.message.trim() || value.message.length > MAX_CHAT_MESSAGE) {
+    return Response.json({ ok: false, error: "Enter a message of up to 800 characters." }, { status: 400 });
+  }
+  if (value.history !== undefined && (!Array.isArray(value.history) || value.history.length > MAX_CHAT_HISTORY ||
+    value.history.some((item) => !item || typeof item !== "object" || !["user", "assistant"].includes(item.role) || typeof item.content !== "string" || item.content.length > MAX_CHAT_MESSAGE))) {
+    return Response.json({ ok: false, error: "Invalid conversation history." }, { status: 400 });
+  }
+  const result = await answerPublicQuestion(value.message.trim(), (value.history as { role: string; content: string }[] | undefined) ?? [], generateGeminiReply);
+  return Response.json({ ok: true, ...result });
 }
 
 export async function GET() {
-  const brands = getVehicleBrands();
-  const services = getServices();
   const configured = isGeminiConfigured();
   return Response.json({
     ok: configured,
     status: configured ? "ready" : "offline",
     provider: "google-gemini",
     model: getGeminiModel(),
-    servicesCount: services.length,
-    brandCount: brands.length,
+    servicesCount: getServices().length,
+    brandCount: getVehicleBrands().length,
   });
 }

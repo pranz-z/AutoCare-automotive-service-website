@@ -3,39 +3,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 
-type Role = "customer" | "branch-staff" | "branch-manager" | "master-admin";
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  sources?: { label: string; href: string }[];
 };
-
-const roleOptions: { label: string; value: Role }[] = [
-  { label: "Customer", value: "customer" },
-  { label: "Branch Staff", value: "branch-staff" },
-  { label: "Branch Manager", value: "branch-manager" },
-  { label: "Master Admin", value: "master-admin" },
-];
 
 const customerActions = [
   "Book a Service",
-  "Check My Booking",
+  "How do I request a quote?",
   "Service Pricing",
   "Vehicle Maintenance",
   "Find a Branch",
 ];
 
-const adminActions = [
-  "How many bookings do we have today?",
-  "Show pending appointments.",
-  "Which branch has the most bookings?",
-  "What services are offered?",
-];
-
-function createSessionId() {
-  return `autocare-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+const MAX_MESSAGE_LENGTH = 800;
 
 export function AutoCareAssistant({
   mode = "customer",
@@ -45,16 +29,11 @@ export function AutoCareAssistant({
   inline?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(mode === "admin");
-  const [sessionId, setSessionId] = useState<string>("");
-  const [role, setRole] = useState<Role>(mode === "admin" ? "master-admin" : "customer");
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
       role: "assistant",
-      content:
-        mode === "admin"
-          ? "Hi. I can help with branch operations, booking totals, and service availability based on current records."
-          : "Hi, I’m AutoCare Assistant. I can help with maintenance questions, service pricing, and booking support.",
+      content: "Hi, I’m AutoCare Assistant. I can help with public service, vehicle, location, and maintenance information. For booking details, please contact us directly.",
       timestamp: new Date().toISOString(),
     },
   ]);
@@ -63,14 +42,10 @@ export function AutoCareAssistant({
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setSessionId(createSessionId());
-  }, []);
-
-  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
 
-  const actions = useMemo(() => (mode === "admin" ? adminActions : customerActions), [mode]);
+  const actions = useMemo(() => customerActions, []);
 
   const appendMessage = (next: Message) => {
     setMessages((current) => [...current, next]);
@@ -78,7 +53,7 @@ export function AutoCareAssistant({
 
   const handleSubmit = async (text?: string) => {
     const trimmed = (text ?? input).trim();
-    if (!trimmed || isLoading || !sessionId) {
+    if (!trimmed || isLoading || trimmed.length > MAX_MESSAGE_LENGTH) {
       return;
     }
 
@@ -99,21 +74,21 @@ export function AutoCareAssistant({
         },
         body: JSON.stringify({
           message: trimmed,
-          role,
-          sessionId,
+          history: messages.filter((item) => item.id !== "welcome").slice(-4).map(({ role, content }) => ({ role, content })),
         }),
       });
 
       const data = await response.json();
-      const reply = data?.reply ?? "Sorry, I could not answer that right now.";
+      const reply = data?.reply ?? "Sorry, I could not answer that right now. Please contact us for help.";
 
       appendMessage({
         id: `${Date.now()}-${Math.random()}`,
         role: "assistant",
         content: reply,
+        sources: Array.isArray(data?.sources) ? data.sources : [],
         timestamp: new Date().toISOString(),
       });
-    } catch (error) {
+    } catch {
       appendMessage({
         id: `${Date.now()}-${Math.random()}`,
         role: "assistant",
@@ -168,20 +143,7 @@ export function AutoCareAssistant({
             <p className="text-[11px] uppercase tracking-[0.2em] text-inverted/70">Online</p>
           </div>
           <div className="flex items-center gap-2">
-            {mode === "customer" ? null : (
-              <select
-                aria-label="Select user role"
-                value={role}
-                onChange={(event) => setRole(event.target.value as Role)}
-                className="max-w-[120px] rounded border border-white/20 bg-white/5 px-2 py-1 text-[11px] text-inverted"
-              >
-                {roleOptions.map((option) => (
-                  <option key={option.value} value={option.value} className="text-primary">
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            )}
+            <span className="text-[11px] text-inverted/70">Public information</span>
             <button type="button" onClick={() => setIsOpen(false)} className="text-sm text-inverted/80 hover:text-inverted">
               Close
             </button>
@@ -203,6 +165,13 @@ export function AutoCareAssistant({
                   }`}
                 >
                   {message.content}
+                  {message.sources?.length ? (
+                    <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-xs">
+                      {message.sources.map((source) => (
+                        <li key={source.href}><a href={source.href} className="text-accent underline underline-offset-2">{source.label}</a></li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -235,6 +204,7 @@ export function AutoCareAssistant({
             <input
               aria-label="Ask the assistant"
               value={input}
+              maxLength={MAX_MESSAGE_LENGTH}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {

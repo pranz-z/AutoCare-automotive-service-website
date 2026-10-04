@@ -122,7 +122,7 @@ http://localhost:3000
 
 ### AI assistant (Google Gemini)
 
-The chat UI calls `/api/ai/chat` on the server. The quote form’s optional service guide calls `/api/ai/service-guide`, sending only the issue description and available make, model, and year. The Gemini API key stays on the server and is never sent to the browser. The guide uses the public catalog, validates suggested service IDs, and shows deterministic safety guidance for potentially unsafe symptoms; it is general guidance, not a diagnosis.
+The public sitewide chat calls `/api/ai/chat` on the server. It selects a small number of relevant public service, vehicle, location, FAQ, and article excerpts per question and displays server-selected source links. It has no access to private records or live availability; unsupported questions direct customers to contact or quote pages. Conversation history stays in the browser and is bounded per request; public chat does not persist conversations on the server. The quote form’s optional service guide calls `/api/ai/service-guide`, sending only the issue description and available make, model, and year. The Gemini API key stays on the server and is never sent to the browser. The guide uses the public catalog, validates suggested service IDs, and shows deterministic safety guidance for potentially unsafe symptoms; it is general guidance, not a diagnosis.
 
 Copy `.env.example` to `.env.local` and set:
 
