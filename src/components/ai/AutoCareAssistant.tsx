@@ -374,7 +374,7 @@ export function AutoCareAssistant({
                 {message.role === "assistant" ? (
                   <>
                     <MarkdownReply content={message.content} />
-                    {message.cards && <AgentCards cards={message.cards} />}
+                    {message.cards && <AgentCards cards={message.cards} onNavigate={() => setIsOpen(false)} />}
                   </>
                 ) : (
                   <div className="whitespace-pre-wrap text-sm">{message.content}</div>
