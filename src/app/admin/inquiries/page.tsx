@@ -19,7 +19,7 @@ type InquiryRow = Awaited<ReturnType<Repository["getInquiryById"]>>;
 /** Resolves ?open= against the real repository by internal id or reference. */
 export async function getOpenInquiry(open: string | undefined) {
   if (!open) return { inquiry: null, missing: false };
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const inquiry =
     (await repo.getInquiryById(open)) ?? (await repo.getInquiry(open)) ?? null;
   return { inquiry, missing: !inquiry };
@@ -27,7 +27,7 @@ export async function getOpenInquiry(open: string | undefined) {
 
 export async function getInquiryPending(record: InquiryRow): Promise<PendingForRecord[]> {
   if (!record) return [];
-  return pendingActionsForRecord(createRepository(getDb()), [record.id, record.reference]);
+  return pendingActionsForRecord(createRepository(await getDb()), [record.id, record.reference]);
 }
 
 function InquiryPanel({
@@ -117,7 +117,7 @@ export default async function AdminInquiriesPage({
 }) {
   await requireAdminSession("ai.view");
   const { open } = await searchParams;
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const [{ inquiry, missing }, adminInquiries, branches] = await Promise.all([
     getOpenInquiry(open),
     getAdminInquiries(),

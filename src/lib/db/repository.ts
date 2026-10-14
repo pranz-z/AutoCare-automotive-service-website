@@ -1,5 +1,7 @@
 import { desc, eq, like, sql } from "drizzle-orm";
-import type { DbHandle } from "./client";
+import type { Client } from "@libsql/client";
+import type { Db, DbLike, DbHandle } from "./client";
+import { txScope } from "./client";
 import {
   agentActions,
   appointments,
@@ -77,13 +79,54 @@ function refNumber(count: number): number {
   return count + 1;
 }
 
-export function createRepository(handle: DbHandle) {
-  const { db, sqlite } = handle;
+const REPO_HANDLES = new WeakMap<object, { client: Client; db: DbLike; url?: string }>();
+const TX_DEPTH = new WeakMap<Client, number>();
 
-  async function nextReference(prefix: string, table: "appointments" | "inquiries" | "quotes"): Promise<string> {
+/**
+ * Runs fn on a transaction. @libsql/client's `transaction()`/`batch()`
+ * variants that open a transaction-bound connection must NOT be used on
+ * `:memory:` — a fresh connection means a fresh empty database. In-memory
+ * databases are single-connection anyway, so BEGIN/COMMIT (+SAVEPOINT when
+ * nested) on the base connection gives the same atomicity there.
+ */
+async function runTx<T>(
+  client: Client,
+  db: DbLike,
+  url: string | undefined,
+  fn: (txDb: DbLike) => Promise<T>,
+): Promise<T> {
+  if (url !== ":memory:") return (db as Db).transaction(fn);
+  const depth = TX_DEPTH.get(client) ?? 0;
+  const sp = `autocare_sp_${depth}`;
+  await client.execute(depth === 0 ? "BEGIN IMMEDIATE" : `SAVEPOINT ${sp}`);
+  TX_DEPTH.set(client, depth + 1);
+  try {
+    const result = await fn(db);
+    await client.execute(depth === 0 ? "COMMIT" : `RELEASE ${sp}`);
+    return result;
+  } catch (e) {
+    try {
+      await client.execute(depth === 0 ? "ROLLBACK" : `ROLLBACK TO ${sp}`);
+      if (depth > 0) await client.execute(`RELEASE ${sp}`);
+    } catch { /* connection already rolled back */ }
+    throw e;
+  } finally {
+    TX_DEPTH.set(client, depth);
+  }
+}
+
+export function createRepository(handle: DbHandle | { client: Client; db: DbLike; url?: string }) {
+  const { client, db } = handle;
+  const url = "url" in handle ? handle.url : undefined;
+
+  async function nextReference(
+    executor: DbLike,
+    prefix: string,
+    table: "appointments" | "inquiries" | "quotes",
+  ): Promise<string> {
     const year = new Date().getFullYear();
     const likePrefix = `${prefix}-${year}-%`;
-    const rows = await db
+    const rows = await executor
       .select({ reference: (table === "appointments" ? appointments : table === "inquiries" ? inquiries : quotes).reference })
       .from(table === "appointments" ? appointments : table === "inquiries" ? inquiries : quotes)
       .where(like((table === "appointments" ? appointments : table === "inquiries" ? inquiries : quotes).reference, likePrefix));
@@ -94,7 +137,7 @@ export function createRepository(handle: DbHandle) {
     return `${prefix}-${year}-${String(refNumber(max)).padStart(5, "0")}`;
   }
 
-  return {
+  const repo = {
     // ----- read -----
     async listBranches() {
       const rows = await db.select().from(branches);
@@ -200,29 +243,29 @@ export function createRepository(handle: DbHandle) {
       const branch = await this.getBranch(input.branchId);
       if (!branch) throw new Error(`unknown branch: ${input.branchId}`);
 
-      const reference = await nextReference("AC", "appointments");
-      const row = {
-        id: id("appt"),
-        reference,
-        customerId: "",
-        vehicleId: null as string | null,
-        vehicleInfo: input.vehicleInfo ?? "",
-        serviceId: input.serviceId,
-        branchId: branch.id,
-        location: input.location ?? "",
-        date: input.date,
-        time: input.time,
-        status: "pending",
-        notes: input.notes ?? "",
-        createdAt: now(),
-      };
-
-      sqlite.exec("BEGIN");
-      try {
-        const customer = await this.findOrCreateCustomer(input.customer);
+      let created!: AppointmentRecord;
+      await runTx(client, db, url, async (tx) => {
+        const txRepo = createRepository({ client, db: tx, url });
+        const reference = await nextReference(tx, "AC", "appointments");
+        const row = {
+          id: id("appt"),
+          reference,
+          customerId: "",
+          vehicleId: null as string | null,
+          vehicleInfo: input.vehicleInfo ?? "",
+          serviceId: input.serviceId,
+          branchId: branch.id,
+          location: input.location ?? "",
+          date: input.date,
+          time: input.time,
+          status: "pending",
+          notes: input.notes ?? "",
+          createdAt: now(),
+        };
+        const customer = await txRepo.findOrCreateCustomer(input.customer);
         row.customerId = customer.id;
         if (input.vehicle?.make) {
-          const veh = await this.createVehicle({
+          const veh = await txRepo.createVehicle({
             customerId: customer.id,
             make: input.vehicle.make ?? "",
             model: input.vehicle.model ?? "",
@@ -236,13 +279,10 @@ export function createRepository(handle: DbHandle) {
             row.vehicleInfo = [veh.make, veh.model, veh.year].filter(Boolean).join(" ") + (veh.plate ? ` (${veh.plate})` : "");
           }
         }
-        await db.insert(appointments).values(row);
-        sqlite.exec("COMMIT");
-      } catch (e) {
-        sqlite.exec("ROLLBACK");
-        throw e;
-      }
-      return { ...row };
+        await tx.insert(appointments).values(row);
+        created = { ...row };
+      });
+      return created;
     },
 
     async listInquiriesDetailed(filter?: { status?: string; category?: string; priority?: string; query?: string }) {
@@ -276,33 +316,39 @@ export function createRepository(handle: DbHandle) {
       message?: string;
       priority?: string;
     }) {
-      const reference = await nextReference("QI", "inquiries");
-      let customerId: string | null = null;
-      if (input.customerEmail) {
-        const c = await this.findOrCreateCustomer({
-          name: input.customerName,
-          email: input.customerEmail,
-          phone: input.customerPhone ?? "",
-        });
-        customerId = c.id;
-      }
-      const row = {
-        id: id("inq"),
-        reference,
-        customerId,
-        customerName: input.customerName,
-        customerEmail: input.customerEmail ?? "",
-        customerPhone: input.customerPhone ?? "",
-        vehicle: input.vehicle ?? "",
-        subject: input.subject,
-        category: input.category,
-        priority: input.priority ?? "medium",
-        status: "new",
-        message: input.message ?? "",
-        createdAt: now(),
-      };
-      await db.insert(inquiries).values(row);
-      return row;
+      let created!: InquiryRecord;
+      await runTx(client, db, url, async (tx) => {
+        const txRepo = createRepository({ client, db: tx, url });
+        const reference = await nextReference(tx, "QI", "inquiries");
+        let customerId: string | null = null;
+        if (input.customerEmail) {
+          const c = await txRepo.findOrCreateCustomer({
+            name: input.customerName,
+            email: input.customerEmail,
+            phone: input.customerPhone ?? "",
+          });
+          customerId = c.id;
+        }
+        const row = {
+          id: id("inq"),
+          reference,
+          customerId,
+          customerName: input.customerName,
+          customerEmail: input.customerEmail ?? "",
+          customerPhone: input.customerPhone ?? "",
+          vehicle: input.vehicle ?? "",
+          subject: input.subject,
+          category: input.category,
+          priority: input.priority ?? "medium",
+          status: "new",
+          message: input.message ?? "",
+          triage: null,
+          createdAt: now(),
+        };
+        await tx.insert(inquiries).values(row);
+        created = row;
+      });
+      return created;
     },
     async updateInquiryStatus(idv: string, status: string) {
       await db.update(inquiries).set({ status }).where(eq(inquiries.id, idv));
@@ -336,31 +382,37 @@ export function createRepository(handle: DbHandle) {
       notes?: string;
     }) {
       if (!VALID_SERVICES.has(input.serviceId)) throw new Error(`unknown service: ${input.serviceId}`);
-      const customer = await this.findOrCreateCustomer(input.customer);
-      const reference = await nextReference("QT", "quotes");
-      const row = {
-        id: id("quote"),
-        reference,
-        customerId: customer.id,
-        serviceId: input.serviceId,
-        make: input.vehicle?.make ?? "",
-        model: input.vehicle?.model ?? "",
-        year: input.vehicle?.year ?? "",
-        variant: input.vehicle?.variant ?? "",
-        issue: input.issue ?? "",
-        name: input.customer.name,
-        phone: input.customer.phone ?? "",
-        email: input.customer.email,
-        province: input.province ?? "",
-        city: input.city ?? "",
-        barangay: input.barangay ?? "",
-        address: input.address ?? "",
-        notes: input.notes ?? "",
-        status: "new",
-        createdAt: now(),
-      };
-      await db.insert(quotes).values(row);
-      return row;
+      let created!: QuoteRecord;
+      await runTx(client, db, url, async (tx) => {
+        const txRepo = createRepository({ client, db: tx, url });
+        const customer = await txRepo.findOrCreateCustomer(input.customer);
+        const reference = await nextReference(tx, "QT", "quotes");
+        const row = {
+          id: id("quote"),
+          reference,
+          customerId: customer.id,
+          serviceId: input.serviceId,
+          make: input.vehicle?.make ?? "",
+          model: input.vehicle?.model ?? "",
+          year: input.vehicle?.year ?? "",
+          variant: input.vehicle?.variant ?? "",
+          issue: input.issue ?? "",
+          name: input.customer.name,
+          phone: input.customer.phone ?? "",
+          email: input.customer.email,
+          province: input.province ?? "",
+          city: input.city ?? "",
+          barangay: input.barangay ?? "",
+          address: input.address ?? "",
+          notes: input.notes ?? "",
+          status: "new",
+          triage: null,
+          createdAt: now(),
+        };
+        await tx.insert(quotes).values(row);
+        created = row;
+      });
+      return created;
     },
 
     // ----- chat sessions -----
@@ -414,13 +466,15 @@ export function createRepository(handle: DbHandle) {
       return this.parseSession(row);
     },
     async addChatMessage(sessionId: string, message: ChatMessage) {
-      const rows = await db.select().from(chatSessions).where(eq(chatSessions.id, sessionId));
-      if (!rows[0]) return undefined;
-      const messages = [...(JSON.parse(rows[0].messages) as ChatMessage[]), message];
-      await db
-        .update(chatSessions)
-        .set({ messages: JSON.stringify(messages), lastMessage: message.content, lastMessageAt: message.time })
-        .where(eq(chatSessions.id, sessionId));
+      await runTx(client, db, url, async (tx) => {
+        const rows = await tx.select().from(chatSessions).where(eq(chatSessions.id, sessionId));
+        if (!rows[0]) return;
+        const messages = [...(JSON.parse(rows[0].messages) as ChatMessage[]), message];
+        await tx
+          .update(chatSessions)
+          .set({ messages: JSON.stringify(messages), lastMessage: message.content, lastMessageAt: message.time })
+          .where(eq(chatSessions.id, sessionId));
+      });
       return this.getChatSession(sessionId);
     },
 
@@ -566,14 +620,32 @@ export function createRepository(handle: DbHandle) {
     },
     async resetData() {
       const { seedIfEmpty } = await import("./seed");
-      sqlite.exec(`
+      await client.executeMultiple(`
         DELETE FROM pending_actions; DELETE FROM agent_actions; DELETE FROM chat_sessions;
         DELETE FROM quotes; DELETE FROM inquiries; DELETE FROM appointments;
         DELETE FROM vehicles; DELETE FROM customers; DELETE FROM branches;
       `);
-      seedIfEmpty(handle);
+      await seedIfEmpty(handle);
     },
   };
+  REPO_HANDLES.set(repo, { client, db, url });
+  return repo;
 }
 
 export type Repository = ReturnType<typeof createRepository>;
+
+/**
+ * Runs fn against a transaction-scoped repository — all writes commit
+ * together or roll back together (libsql "write" transaction). Nested calls
+ * become savepoints.
+ */
+export function withTransaction<T>(
+  repo: Repository,
+  fn: (txRepo: Repository) => Promise<T>,
+): Promise<T> {
+  const h = REPO_HANDLES.get(repo);
+  if (!h) throw new Error("repository handle not found");
+  return runTx(h.client, h.db, h.url, (tx) =>
+    txScope.run(tx, () => fn(createRepository({ client: h.client, db: tx, url: h.url }))),
+  );
+}

@@ -21,7 +21,7 @@ type AppointmentRow = Awaited<ReturnType<Repository["listAppointmentsDetailed"]>
 /** Resolves ?open= by internal id or display reference. */
 export async function getOpenAppointment(open: string | undefined) {
   if (!open) return { appointment: null, missing: false };
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const appointment =
     (await repo.listAppointmentsDetailed()).find(
       (a) => a.id === open || a.reference === open,
@@ -31,7 +31,7 @@ export async function getOpenAppointment(open: string | undefined) {
 
 export async function getAppointmentPending(record: AppointmentRow): Promise<PendingForRecord[]> {
   if (!record) return [];
-  return pendingActionsForRecord(createRepository(getDb()), [record.id, record.reference]);
+  return pendingActionsForRecord(createRepository(await getDb()), [record.id, record.reference]);
 }
 
 function AppointmentPanel({ appointment, pending }: { appointment: AppointmentRow; pending: PendingForRecord[] }) {

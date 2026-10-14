@@ -15,7 +15,7 @@ function pretty(json: string): string {
 
 export default async function AdminAuditPage() {
   await requireAdminSession("ai.view");
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const actions = await repo.listAgentActions();
 
   return (

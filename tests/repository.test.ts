@@ -1,12 +1,16 @@
-import test from "node:test";
+import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { createDb } from "../src/lib/db/client";
+import { migrate } from "../src/lib/db/migrate";
 import { seedIfEmpty } from "../src/lib/db/seed";
 import { createRepository } from "../src/lib/db/repository";
 
 const handle = createDb(":memory:");
-seedIfEmpty(handle);
 const repo = createRepository(handle);
+before(async () => {
+  await migrate(handle);
+  await seedIfEmpty(handle);
+});
 
 test("seedIfEmpty seeds branches, customers, appointments, inquiries and chat sessions", async () => {
   const branches = await repo.listBranches();

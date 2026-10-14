@@ -107,7 +107,7 @@ export function triageSubmission(input: {
 
 /** Event hook: triage a freshly created inquiry and store the result on it. */
 export async function autoTriageInquiry(inquiryId: string, repo?: Repository) {
-  const r = repo ?? createRepository(getDb());
+  const r = repo ?? createRepository(await getDb());
   const rows = await r.listInquiriesDetailed();
   const inquiry = rows.find((i) => i.id === inquiryId);
   if (!inquiry) return null;
@@ -134,7 +134,7 @@ export async function autoTriageInquiry(inquiryId: string, repo?: Repository) {
 
 /** Event hook: triage a freshly created quote request and store the result. */
 export async function autoTriageQuote(quoteId: string, repo?: Repository) {
-  const r = repo ?? createRepository(getDb());
+  const r = repo ?? createRepository(await getDb());
   const quotes = await r.listQuotes();
   const quote = quotes.find((q) => q.id === quoteId);
   if (!quote) return null;

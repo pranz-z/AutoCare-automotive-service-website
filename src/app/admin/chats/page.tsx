@@ -14,13 +14,13 @@ type ChatRow = Awaited<ReturnType<Repository["getChatSession"]>>;
 /** Resolves ?open= by internal chat session id. */
 export async function getOpenChat(open: string | undefined) {
   if (!open) return { chat: null, missing: false };
-  const chat = (await createRepository(getDb()).getChatSession(open)) ?? null;
+  const chat = (await createRepository(await getDb()).getChatSession(open)) ?? null;
   return { chat, missing: !chat };
 }
 
 export async function getChatPending(record: ChatRow): Promise<PendingForRecord[]> {
   if (!record) return [];
-  return pendingActionsForRecord(createRepository(getDb()), [record.id]);
+  return pendingActionsForRecord(createRepository(await getDb()), [record.id]);
 }
 
 export default async function AdminChatsPage({

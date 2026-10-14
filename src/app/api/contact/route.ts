@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     const topic = oneOf(reqStr(body, "topic", 40), TOPICS, "topic");
     const message = reqStr(body, "message", 2000);
 
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const inquiry = await repo.createInquiry({
       customerName: name,
       customerEmail: email,

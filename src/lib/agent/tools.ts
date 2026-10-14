@@ -1,5 +1,5 @@
 import { getArticles, getFaqs, getLocations, getService, getServices } from "@/lib/content";
-import { getDb } from "@/lib/db/client";
+import { currentTxDb, getDb } from "@/lib/db/client";
 import { createRepository, type Repository } from "@/lib/db/repository";
 import { triageSubmission, type TriageResult } from "./triage";
 import {
@@ -22,8 +22,10 @@ const EVERYONE: AgentRole[] = ["public", "staff", "manager", "admin"];
 const STAFF: AgentRole[] = ["staff", "manager", "admin"];
 const ADMIN: AgentRole[] = ["admin"];
 
-function repo(): Repository {
-  return createRepository(getDb());
+async function repo(): Promise<Repository> {
+  const h = await getDb();
+  // Inside withTransaction, join the in-flight transaction scope.
+  return createRepository({ client: h.client, db: currentTxDb() ?? h.db, url: h.url });
 }
 
 const ok = <T>(data: T, cards?: AgentCard[]): ToolResult<T> => ({
@@ -57,12 +59,12 @@ async function validateReschedule(input: Record<string, unknown>): Promise<ToolR
   const time = str(input.time);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Invalid date format (use YYYY-MM-DD)");
   if (!/^\d{2}:\d{2}$/.test(time)) return fail("Invalid time format (use HH:MM)");
-  const appointment = await repo().getAppointmentByReference(str(input.reference).trim().toUpperCase());
+  const appointment = await (await repo()).getAppointmentByReference(str(input.reference).trim().toUpperCase());
   if (!appointment) return fail("Booking not found");
   if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
     return fail(`Cannot reschedule a ${appointment.status} booking`);
   }
-  const taken = await repo().countBooked(appointment.branchId, date, time, appointment.id);
+  const taken = await (await repo()).countBooked(appointment.branchId, date, time, appointment.id);
   if (taken >= 2) return fail(`Slot ${date} ${time} is fully booked at that branch`);
   return ok({ currentDate: appointment.date, currentTime: appointment.time, requested: `${date} ${time}` });
 }
@@ -70,14 +72,14 @@ async function validateReschedule(input: Record<string, unknown>): Promise<ToolR
 async function applyReschedule(input: Record<string, unknown>): Promise<ToolResult> {
   const date = str(input.date);
   const time = str(input.time);
-  const appointment = await repo().getAppointmentByReference(str(input.reference).trim().toUpperCase());
+  const appointment = await (await repo()).getAppointmentByReference(str(input.reference).trim().toUpperCase());
   if (!appointment) return fail("Booking not found");
   if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
     return fail(`Cannot reschedule a ${appointment.status} booking`);
   }
-  const taken = await repo().countBooked(appointment.branchId, date, time, appointment.id);
+  const taken = await (await repo()).countBooked(appointment.branchId, date, time, appointment.id);
   if (taken >= 2) return fail(`Slot ${date} ${time} is now fully booked`);
-  const updated = await repo().updateAppointmentSchedule(appointment.id, date, time);
+  const updated = await (await repo()).updateAppointmentSchedule(appointment.id, date, time);
   return ok({ reference: appointment.reference, date: updated?.date, time: updated?.time });
 }
 
@@ -155,9 +157,9 @@ export const agentTools: AgentTool[] = [
         if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return fail(`Invalid ${label} format (use YYYY-MM-DD)`);
       }
       if (serviceId && !getService(serviceId)) return fail("Service not found");
-      if (branchId && !(await repo().getBranch(branchId))) return fail("Branch not found");
+      if (branchId && !(await (await repo()).getBranch(branchId))) return fail("Branch not found");
 
-      const availability = await repo().getAvailability(
+      const availability = await (await repo()).getAvailability(
         branchId || undefined,
         serviceId || undefined,
         date ? { from: date, to: date } : { from: dateFrom || undefined, to: dateTo || undefined },
@@ -183,7 +185,7 @@ export const agentTools: AgentTool[] = [
     tier: "read",
     roles: EVERYONE,
     async execute(_ctx, input) {
-      const branch = await repo().getBranch(str(input.branchId));
+      const branch = await (await repo()).getBranch(str(input.branchId));
       if (!branch) return fail("Branch not found");
       return ok({ ...branch, href: `/locations?branch=${branch.id}`, note: "Demo branch — synthetic data only" });
     },
@@ -241,7 +243,7 @@ export const agentTools: AgentTool[] = [
       if (!/^AC-\d{4}-\d{5}$/.test(reference)) {
         return fail("Invalid reference format. Use AC-YYYY-NNNNN (e.g., AC-2025-00042)");
       }
-      const appointment = await repo().getAppointmentByReference(reference);
+      const appointment = await (await repo()).getAppointmentByReference(reference);
       if (!appointment) {
         return fail("No booking matches that reference and contact detail.");
       }
@@ -333,7 +335,7 @@ export const agentTools: AgentTool[] = [
     async execute(ctx, input) {
       const query = cleanQuery(input.query);
       if (input.query && !query) return fail("Invalid search query");
-      const rows = await repo().listAppointmentsDetailed({
+      const rows = await (await repo()).listAppointmentsDetailed({
         status: str(input.status) || undefined,
         branchId: str(input.branchId) || undefined,
         query,
@@ -359,7 +361,7 @@ export const agentTools: AgentTool[] = [
     roles: STAFF,
     async execute(ctx, input) {
       const wanted = str(input.id);
-      const rows = await repo().listAppointmentsDetailed();
+      const rows = await (await repo()).listAppointmentsDetailed();
       const appointment = rows.find((a) => a.id === wanted || a.reference === wanted);
       if (!appointment) return fail("Appointment not found");
       const serviceName = getService(appointment.serviceId)?.name;
@@ -383,7 +385,7 @@ export const agentTools: AgentTool[] = [
     async execute(ctx, input) {
       const query = cleanQuery(input.query);
       if (input.query && !query) return fail("Invalid search query");
-      const rows = await repo().listInquiriesDetailed({
+      const rows = await (await repo()).listInquiriesDetailed({
         status: str(input.status) || undefined,
         category: str(input.category) || undefined,
         priority: str(input.priority) || undefined,
@@ -409,7 +411,7 @@ export const agentTools: AgentTool[] = [
     roles: STAFF,
     async execute(ctx, input) {
       const wanted = str(input.id);
-      const rows = await repo().listInquiriesDetailed();
+      const rows = await (await repo()).listInquiriesDetailed();
       const inquiry = rows.find((i) => i.id === wanted || i.reference === wanted);
       return inquiry ? ok(inquiry, [inquiryCard(inquiry, STAFF.includes(ctx.role))]) : fail("Inquiry not found");
     },
@@ -423,7 +425,7 @@ export const agentTools: AgentTool[] = [
     async execute(ctx, input) {
       const query = cleanQuery(input.query);
       if (input.query && !query) return fail("Invalid search query");
-      const [customers, vehicles] = await Promise.all([repo().listCustomers(), repo().listVehicles()]);
+      const [customers, vehicles] = await Promise.all([(await repo()).listCustomers(), (await repo()).listVehicles()]);
       const vehicleByCustomer = new Map<string, string>();
       for (const v of vehicles) {
         if (!vehicleByCustomer.has(v.customerId)) {
@@ -450,15 +452,15 @@ export const agentTools: AgentTool[] = [
     tier: "read",
     roles: STAFF,
     async execute(ctx, input) {
-      const customers = await repo().listCustomers();
+      const customers = await (await repo()).listCustomers();
       const customer = customers.find((c) => c.id === str(input.id));
       if (!customer) return fail("Customer not found");
-      const rows = await repo().listAppointmentsDetailed();
+      const rows = await (await repo()).listAppointmentsDetailed();
       const recentAppointments = rows
         .filter((a) => a.customerId === customer.id)
         .slice(0, 5)
         .map((a) => ({ reference: a.reference, serviceId: a.serviceId, date: a.date, status: a.status }));
-      const vehicles = await repo().listVehicles();
+      const vehicles = await (await repo()).listVehicles();
       const vehicle = vehicles.find((v) => v.customerId === customer.id);
       return ok(
         { ...customer, recentAppointments },
@@ -473,7 +475,7 @@ export const agentTools: AgentTool[] = [
     tier: "read",
     roles: STAFF,
     async execute() {
-      const summary = await repo().getSummary();
+      const summary = await (await repo()).getSummary();
       return ok(summary, [dashboardCard(summary)]);
     },
   },
@@ -493,16 +495,16 @@ export const agentTools: AgentTool[] = [
     roles: STAFF,
     summarize: (input) => `Set inquiry ${str(input.id)} status to "${str(input.status)}"`,
     async execute(ctx, input) {
-      const rows = await repo().listInquiriesDetailed();
+      const rows = await (await repo()).listInquiriesDetailed();
       const inquiry = rows.find((i) => i.id === str(input.id) || i.reference === str(input.id));
       if (!inquiry) return fail("Inquiry not found");
       return ok({ inquiryReference: inquiry.reference, currentStatus: inquiry.status });
     },
     async apply(_ctx, input) {
-      const rows = await repo().listInquiriesDetailed();
+      const rows = await (await repo()).listInquiriesDetailed();
       const inquiry = rows.find((i) => i.id === str(input.id) || i.reference === str(input.id));
       if (!inquiry) return fail("Inquiry not found");
-      const updated = await repo().updateInquiryStatus(inquiry.id, str(input.status));
+      const updated = await (await repo()).updateInquiryStatus(inquiry.id, str(input.status));
       return ok({ reference: inquiry.reference, status: updated?.status });
     },
   },
@@ -520,16 +522,16 @@ export const agentTools: AgentTool[] = [
     roles: STAFF,
     summarize: (input) => `Set appointment ${str(input.id)} status to "${str(input.status)}"`,
     async execute(_ctx, input) {
-      const rows = await repo().listAppointmentsDetailed();
+      const rows = await (await repo()).listAppointmentsDetailed();
       const appointment = rows.find((a) => a.id === str(input.id) || a.reference === str(input.id));
       if (!appointment) return fail("Appointment not found");
       return ok({ appointmentReference: appointment.reference, currentStatus: appointment.status });
     },
     async apply(_ctx, input) {
-      const rows = await repo().listAppointmentsDetailed();
+      const rows = await (await repo()).listAppointmentsDetailed();
       const appointment = rows.find((a) => a.id === str(input.id) || a.reference === str(input.id));
       if (!appointment) return fail("Appointment not found");
-      const updated = await repo().updateAppointmentStatus(appointment.id, str(input.status));
+      const updated = await (await repo()).updateAppointmentStatus(appointment.id, str(input.status));
       return ok({ reference: appointment.reference, status: updated?.status });
     },
   },
@@ -558,12 +560,12 @@ export const agentTools: AgentTool[] = [
       if (!/^\d{4}-\d{2}-\d{2}$/.test(str(input.date))) return fail("Invalid date format (use YYYY-MM-DD)");
       if (!/^\d{2}:\d{2}$/.test(str(input.time))) return fail("Invalid time format (use HH:MM)");
       if (!getService(str(input.serviceId))) return fail("Service not found");
-      const branch = await repo().getBranch(str(input.branchId));
+      const branch = await (await repo()).getBranch(str(input.branchId));
       if (!branch) return fail("Branch not found");
       return ok({ branchName: branch.name });
     },
     async apply(_ctx, input) {
-      const appointment = await repo().createAppointment({
+      const appointment = await (await repo()).createAppointment({
         customer: { name: str(input.customerName), email: str(input.customerEmail), phone: str(input.customerPhone) },
         vehicleInfo: str(input.vehicleInfo),
         serviceId: str(input.serviceId),
@@ -606,7 +608,7 @@ export const agentTools: AgentTool[] = [
     roles: STAFF,
     summarize: (input) => `Cancel booking ${str(input.reference)}`,
     async execute(_ctx, input) {
-      const appointment = await repo().getAppointmentByReference(str(input.reference).trim().toUpperCase());
+      const appointment = await (await repo()).getAppointmentByReference(str(input.reference).trim().toUpperCase());
       if (!appointment) return fail("Booking not found");
       if (appointment.status === "cancelled") return fail("Booking is already cancelled");
       if (["completed", "no_show"].includes(appointment.status)) {
@@ -615,10 +617,10 @@ export const agentTools: AgentTool[] = [
       return ok({ currentStatus: appointment.status, date: appointment.date, time: appointment.time });
     },
     async apply(_ctx, input) {
-      const appointment = await repo().getAppointmentByReference(str(input.reference).trim().toUpperCase());
+      const appointment = await (await repo()).getAppointmentByReference(str(input.reference).trim().toUpperCase());
       if (!appointment) return fail("Booking not found");
       if (appointment.status === "cancelled") return fail("Booking is already cancelled");
-      const updated = await repo().updateAppointmentStatus(appointment.id, "cancelled");
+      const updated = await (await repo()).updateAppointmentStatus(appointment.id, "cancelled");
       return ok({ reference: appointment.reference, status: updated?.status });
     },
   },
@@ -648,7 +650,7 @@ export const agentTools: AgentTool[] = [
       return ok({ serviceName: getService(str(input.serviceId))?.name });
     },
     async apply(_ctx, input) {
-      const quote = await repo().createQuote({
+      const quote = await (await repo()).createQuote({
         customer: {
           name: str(input.customerName),
           email: str(input.customerEmail),
@@ -686,7 +688,7 @@ export const agentTools: AgentTool[] = [
       return ok({});
     },
     async apply(_ctx, input) {
-      const inquiry = await repo().createInquiry({
+      const inquiry = await (await repo()).createInquiry({
         customerName: str(input.customerName),
         customerEmail: str(input.customerEmail),
         customerPhone: str(input.customerPhone),
@@ -706,7 +708,7 @@ export const agentTools: AgentTool[] = [
     tier: "read",
     roles: STAFF,
     async execute(_ctx, input) {
-      const rows = await repo().listInquiriesDetailed();
+      const rows = await (await repo()).listInquiriesDetailed();
       const inquiry = rows.find((i) => i.id === str(input.id) || i.reference === str(input.id));
       if (!inquiry) return fail("Inquiry not found");
       if (inquiry.triage) {
@@ -732,7 +734,7 @@ export const agentTools: AgentTool[] = [
     roles: STAFF,
     async execute(_ctx, input) {
       const wanted = str(input.id);
-      const inquiries = await repo().listInquiriesDetailed();
+      const inquiries = await (await repo()).listInquiriesDetailed();
       const inquiry = inquiries.find((i) => i.id === wanted || i.reference === wanted);
       if (inquiry) {
         let draft: string | undefined;
@@ -749,7 +751,7 @@ export const agentTools: AgentTool[] = [
         }
         return ok({ reference: inquiry.reference, kind: "inquiry", draft });
       }
-      const quote = (await repo().listQuotes()).find((q) => q.id === wanted || q.reference === wanted);
+      const quote = (await (await repo()).listQuotes()).find((q) => q.id === wanted || q.reference === wanted);
       if (quote) {
         let draft: string | undefined;
         if (quote.triage) {
@@ -776,7 +778,7 @@ export const agentTools: AgentTool[] = [
     tier: "read",
     roles: STAFF,
     async execute(ctx, input) {
-      const session = await repo().getChatSession(str(input.sessionId));
+      const session = await (await repo()).getChatSession(str(input.sessionId));
       if (!session) return fail("Conversation not found");
       const msgs = session.messages;
       const bySender = msgs.reduce<Record<string, number>>((acc, m) => {
@@ -809,7 +811,7 @@ export const agentTools: AgentTool[] = [
     tier: "read",
     roles: STAFF,
     async execute(ctx) {
-      const r = repo();
+      const r = await repo();
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
       const [appointments, inquiries, quotes, pending] = await Promise.all([
@@ -880,7 +882,7 @@ export const agentTools: AgentTool[] = [
     roles: ADMIN,
     async execute(_ctx, input) {
       const limit = typeof input.limit === "number" ? Math.min(Math.max(input.limit, 1), 50) : 20;
-      const rows = await repo().listAgentActions();
+      const rows = await (await repo()).listAgentActions();
       return ok({
         results: rows.slice(0, limit).map((a) => ({
           id: a.id, tool: a.toolName, actorType: a.actorType, success: a.success === 1, createdAt: a.createdAt,
@@ -896,7 +898,9 @@ export const agentTools: AgentTool[] = [
     tier: "admin",
     roles: ADMIN,
     async execute() {
-      await repo().resetData();
+      const { demoResetAllowed } = await import("@/lib/admin-auth");
+      if (!demoResetAllowed()) return fail("Demo reset is disabled in production.");
+      await (await repo()).resetData();
       return ok({ message: "Demo data has been reset to the seeded state" });
     },
   },

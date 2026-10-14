@@ -211,7 +211,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
     maxSteps = AGENT_MAX_STEPS,
     timeoutMs = AGENT_TIMEOUT_MS,
   } = options;
-  const repo = options.repo ?? createRepository(getDb());
+  const repo = options.repo ?? createRepository(await getDb());
   const started = Date.now();
   const deadline = started + timeoutMs;
   const timing = timingEnabled();

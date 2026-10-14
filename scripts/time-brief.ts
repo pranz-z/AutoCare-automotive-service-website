@@ -13,7 +13,7 @@ async function main() {
   const { runAgent } = await import("../src/lib/agent/runtime");
   const { createGeminiAgentModel } = await import("../src/lib/agent/model");
 
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const session = await repo.createChatSession({
     id: `timing-${Date.now()}`,
     channel: "staff",

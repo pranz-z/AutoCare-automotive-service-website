@@ -98,7 +98,7 @@ describe("drawer rendering", () => {
 
 describe("record mutations", () => {
   test("status change writes the record and an audit row with the staff actor", async () => {
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const appt = await repo.createAppointment({
       customer: { name: "Test Person", email: "t@t.dev", phone: "0917" },
       vehicleInfo: "Test car",
@@ -120,12 +120,12 @@ describe("record mutations", () => {
   test("invalid transition is refused and nothing changes", async () => {
     const res = await mutateAppointment(staff, "appt-001", "complete"); // confirmed → complete not allowed
     assert.equal(res.ok, false);
-    const row = (await createRepository(getDb()).listAppointmentsDetailed()).find((a) => a.id === "appt-001");
+    const row = (await createRepository(await getDb()).listAppointmentsDetailed()).find((a) => a.id === "appt-001");
     assert.equal(row?.status, "confirmed");
   });
 
   test("reschedule moves date/time and lands on rescheduled", async () => {
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const res = await mutateAppointment(staff, "appt-001", "reschedule", { date: "2025-11-01", time: "14:00" });
     assert.equal(res.ok, true);
     const row = (await repo.listAppointmentsDetailed()).find((a) => a.id === "appt-001");
@@ -143,7 +143,7 @@ describe("record mutations", () => {
   });
 
   test("inquiry mark_contacted → resolve flow updates status each step", async () => {
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const res1 = await mutateInquiryStatus(staff, "inq-001", "mark_contacted");
     assert.equal(res1.ok, true);
     let row = await repo.getInquiryById("inq-001");
@@ -163,11 +163,11 @@ describe("record mutations", () => {
     assert.equal(bad.ok, false);
     const res = await mutateInquiryPriority(staff, "inq-002", "urgent");
     assert.equal(res.ok, true);
-    assert.equal((await createRepository(getDb()).getInquiryById("inq-002"))?.priority, "urgent");
+    assert.equal((await createRepository(await getDb()).getInquiryById("inq-002"))?.priority, "urgent");
   });
 
   test("approve draft requires a stored draft and stamps it once", async () => {
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const inq = await repo.createInquiry({
       customerName: "Test Customer",
       subject: "Brakes",
@@ -185,7 +185,7 @@ describe("record mutations", () => {
   });
 
   test("convert creates a booking and resolves the inquiry", async () => {
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const inq = await repo.createInquiry({
       customerName: "Convert Me",
       customerEmail: "conv@t.dev",
@@ -208,7 +208,7 @@ describe("record mutations", () => {
 
 describe("pending actions on a record", () => {
   test("matches pending rows whose args contain the record id or reference", async () => {
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     await repo.createPendingAction({
       action: "reschedule_booking",
       payload: { args: { reference: "AC-2025-00042", date: "2025-11-02", time: "09:00" }, token: "tok-1", summary: "Move AC-2025-00042" },

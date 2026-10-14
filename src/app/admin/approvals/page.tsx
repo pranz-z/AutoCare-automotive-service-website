@@ -35,7 +35,7 @@ function describe(row: { id: string; action: string; payload: string; expiresAt:
 
 export default async function AdminApprovalsPage() {
   await requireAdminSession("ai.view");
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const rows = await repo.listPendingActions();
   const pending = rows.filter((r) => r.status === "pending").map(describe);
   const resolved = rows.filter((r) => r.status !== "pending").slice(0, 20);

@@ -156,7 +156,20 @@ export function isAllowed(role: AdminRole, permission: string) {
   return permissions[role]?.includes(permission) ?? false;
 }
 
-// ----- credentials (scrypt-hashed; no plaintext in source) -----
+/**
+ * Demo-data reset is destructive. In production it must be explicitly enabled
+ * via ALLOW_DEMO_RESET=true — everywhere else it is allowed (dev, tests).
+ */
+export function demoResetAllowed(): boolean {
+  return process.env.NODE_ENV !== "production" || process.env.ALLOW_DEMO_RESET === "true";
+}
+
+/** True when at least one ADMIN_CREDENTIAL_* env var configures an account. */
+export function adminCredentialsConfigured(): boolean {
+  return VALID_ROLES.some((r) => Boolean(process.env[`ADMIN_CREDENTIAL_${r.toUpperCase()}`]));
+}
+
+// ----- credentials (scrypt-hashed; configured via env, never in source) -----
 
 interface AdminAccount {
   role: AdminRole;
@@ -164,26 +177,23 @@ interface AdminAccount {
   hash: string;
 }
 
-const ADMIN_ACCOUNTS: Record<string, AdminAccount> = {
-  admin: {
-    role: "admin",
-    salt: "f243ede27c75d2a0c66499bbef185b2b",
-    hash: "fc0075be4abab1e8344a5eeb6d5514ac2745719b403dd3b15a5603e0c86c474880059202a05344eea762147bafd32b3ff8d8150b36e00410a6bf1429ecc2604d",
-  },
-  manager: {
-    role: "manager",
-    salt: "aa8b5d08d7376e23ee6508ba7858576a",
-    hash: "605ea21811af704a0596509c6e3e601cf147caefa6463a6cc6c1dc6ab177ff1f81b9cf3e2328c96ae5e45e13b942dfff5923e9c1d81e5da97486ff8ac649cb13",
-  },
-  staff: {
-    role: "staff",
-    salt: "24acd478099b43b00a0c00e92f674bee",
-    hash: "79f53206fed24369f2da4cc736da3745da8438dc94435f5a36e61ad37b05469cc4a1f9be0cd0266fc8076d36545ba3e00c8e595ad724709f8200145661496bde",
-  },
-};
+/**
+ * Resolves an account from `ADMIN_CREDENTIAL_<USERNAME>` ("salt_hex:hash_hex").
+ * There are NO built-in credentials — an unset or malformed env var means the
+ * account does not exist (fail closed), in every environment.
+ */
+function accountFor(username: string): AdminAccount | null {
+  const name = username.toLowerCase();
+  if (!VALID_ROLES.includes(name)) return null;
+  const envVal = process.env[`ADMIN_CREDENTIAL_${name.toUpperCase()}`];
+  if (!envVal) return null;
+  const [salt, hash] = envVal.split(":");
+  if (!salt || !hash) return null;
+  return { role: name as AdminRole, salt, hash };
+}
 
 export function verifyCredentials(username: string, password: string): AdminRole | null {
-  const account = ADMIN_ACCOUNTS[username.toLowerCase()];
+  const account = accountFor(username);
   if (!account || !password) return null;
   const derived = scryptSync(password, account.salt, 64);
   const expected = Buffer.from(account.hash, "hex");

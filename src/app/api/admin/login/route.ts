@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ADMIN_COOKIE, createSessionToken, SESSION_TTL_SECONDS, takeLoginAttempt, verifyCredentials } from "@/lib/admin-auth";
+import { adminCredentialsConfigured, ADMIN_COOKIE, createSessionToken, SESSION_TTL_SECONDS, takeLoginAttempt, verifyCredentials } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 
@@ -17,6 +17,12 @@ const COOKIE_OPTIONS = {
 };
 
 export async function POST(request: Request) {
+  if (!adminCredentialsConfigured()) {
+    return NextResponse.json(
+      { ok: false, message: "Admin credentials are not configured (set ADMIN_CREDENTIAL_* env vars)." },
+      { status: 503 },
+    );
+  }
   if (!takeLoginAttempt(clientKey(request))) {
     return NextResponse.json(
       { ok: false, message: "Too many login attempts. Please try again in a minute." },

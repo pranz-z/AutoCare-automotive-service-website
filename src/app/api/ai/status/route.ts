@@ -1,5 +1,7 @@
 import { getGeminiModel, isGeminiConfigured } from "@/lib/ai/gemini";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   const model = getGeminiModel();
 

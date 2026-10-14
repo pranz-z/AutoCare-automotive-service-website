@@ -32,7 +32,7 @@ const publicCtx: AgentContext = { role: "public", sessionId: "pub-session" };
 let sessionsReady = false;
 async function ensureSessions() {
   if (sessionsReady) return;
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   for (const [id, channel] of [["test-session", "staff"], ["pub-session", "public"]] as const) {
     if (!(await repo.getChatSession(id))) {
       await repo.createChatSession({ id, channel, customerName: "Test", conversationType: "ai", messages: [] });
@@ -75,7 +75,7 @@ describe("agent runtime", () => {
     const last = secondCall.contents.at(-1) as { parts: { functionResponse?: { name: string } }[] };
     assert.equal(last.parts[0].functionResponse?.name, "search_services");
     // Audit log was written.
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const actions = await repo.listAgentActions();
     assert.ok(actions.some((a) => a.toolName === "search_services" && a.sessionId === "pub-session" && a.success));
   });
@@ -213,7 +213,7 @@ describe("agent runtime", () => {
 
   test("write-tier tools stage a pending action instead of mutating data", async () => {
     await ensureSessions();
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const before = await repo.getInquiry("QI-2025-00156");
     const model = new ScriptedModel([
       { toolCalls: [{ name: "update_inquiry_status", args: { id: "inq-001", status: "reviewed" } }] },
@@ -265,7 +265,7 @@ describe("booking tools", () => {
 
   test("check_availability reflects real bookings and date ranges", async () => {
     const tool = getTool("check_availability")!;
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
 
     // Fill a specific slot at branch-bgc to capacity (2).
     for (const n of [1, 2]) {
@@ -299,7 +299,7 @@ describe("booking tools", () => {
       { text: "staged" },
     ]);
     const result = await runAgent({ model, ctx: staffCtx, message: "x", system: "sys" });
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const pending = await repo.getPendingAction(result.pendingActions[0].id);
     const token = (JSON.parse(pending!.payload) as { token: string }).token;
     const res = await confirmPOST(staffRequest({ id: pending!.id, token }));
@@ -315,7 +315,7 @@ describe("booking tools", () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.match(body.result.reference, /^AC-\d{4}-\d{5}$/);
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const appt = await repo.getAppointmentByReference(body.result.reference);
     assert.equal(appt?.customerName, "Ana Reyes");
   });
@@ -325,7 +325,7 @@ describe("booking tools", () => {
       reference: "AC-2025-00043", date: "2027-03-11", time: "14:00",
     });
     assert.equal(res.status, 200);
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const appt = await repo.getAppointmentByReference("AC-2025-00043");
     assert.equal(appt?.date, "2027-03-11");
     assert.equal(appt?.time, "14:00");
@@ -344,7 +344,7 @@ describe("booking tools", () => {
   test("cancel_booking cancels after confirmation", async () => {
     const { res } = await stageAndConfirm("cancel_booking", { reference: "AC-2025-00043" });
     assert.equal(res.status, 200);
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const appt = await repo.getAppointmentByReference("AC-2025-00043");
     assert.equal(appt?.status, "cancelled");
   });
@@ -369,7 +369,7 @@ describe("POST /api/agent/confirm", () => {
       { text: "staged" },
     ]);
     const result = await runAgent({ model, ctx: staffCtx, message: "x", system: "sys" });
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const pending = await repo.getPendingAction(result.pendingActions[0].id);
     const token = (JSON.parse(pending!.payload) as { token: string }).token;
     return { id: result.pendingActions[0].id, token };
@@ -394,7 +394,7 @@ describe("POST /api/agent/confirm", () => {
 
   test("executes a valid action exactly once", async () => {
     const { id, token } = await stageUpdate();
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
 
     const res = await confirmPOST(staffRequest({ id, token }));
     assert.equal(res.status, 200);
@@ -413,7 +413,7 @@ describe("POST /api/agent/confirm", () => {
   });
 
   test("rejects expired actions", async () => {
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const expired = await repo.createPendingAction({
       sessionId: "test-session",
       action: "update_inquiry_status",
@@ -429,7 +429,7 @@ describe("POST /api/agent/confirm", () => {
   test("writes an audit record for the confirmed action", async () => {
     const { id, token } = await stageUpdate();
     await confirmPOST(staffRequest({ id, token }));
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const actions = await repo.listAgentActions();
     assert.ok(actions.some((a) => a.toolName === "update_inquiry_status#confirm" && a.sessionId === "test-session" && a.success));
   });
@@ -484,7 +484,7 @@ describe("admin agent tools", () => {
     assert.equal(result.pendingActions.length, 1);
     assert.match(result.pendingActions[0].summary, /AC-2025-00042/);
 
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const pending = await repo.getPendingAction(result.pendingActions[0].id);
     const token = (JSON.parse(pending!.payload) as { token: string }).token;
     const res = await confirmPOST(staffRequest({ id: pending!.id, token }));
@@ -522,7 +522,7 @@ describe("auto-triage hook", () => {
     }));
     assert.equal(res.status, 200);
     const { reference } = await res.json();
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const inquiry = await repo.getInquiry(reference);
     assert.ok(inquiry?.triage, "triage must be stored on the record");
     const triage = JSON.parse(inquiry!.triage!) as { urgency: string; suggestedServiceId: string };
@@ -544,7 +544,7 @@ describe("auto-triage hook", () => {
     }));
     assert.equal(res.status, 200);
     const { reference } = await res.json();
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const quote = (await repo.listQuotes()).find((q) => q.reference === reference);
     assert.ok(quote?.triage, "triage must be stored on the quote");
     const triage = JSON.parse(quote!.triage!) as { urgency: string; draftReply: string };
@@ -555,7 +555,7 @@ describe("auto-triage hook", () => {
 describe("POST /api/agent/reject", () => {
   test("rejects a pending action so it cannot be confirmed", async () => {
     await ensureSessions();
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     // Fresh booking so earlier tests' mutations can't interfere.
     const appt = await repo.createAppointment({
       customer: { name: "Reject Me", email: "reject@example.com", phone: "" },

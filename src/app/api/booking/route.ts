@@ -69,7 +69,7 @@ export async function POST(request: Request) {
     const mobile = reqPhone(body, "mobile");
     const email = reqEmail(body, "email");
 
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const branchId = BRANCH_BY_CITY[cityName.toLowerCase()] ?? DEFAULT_BRANCH;
     const appointment = await repo.createAppointment({
       customer: { name: `${firstName} ${lastName}`, email, phone: mobile },

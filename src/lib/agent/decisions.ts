@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db/client";
-import { createRepository } from "@/lib/db/repository";
+import { createRepository, withTransaction } from "@/lib/db/repository";
 import { getTool } from "./tools";
 import type { AgentRole, ToolResult } from "./types";
 import type { SessionPayload } from "@/lib/admin-auth";
@@ -19,7 +19,7 @@ export async function approvePendingAction(
   token: string,
   session: SessionPayload,
 ): Promise<DecisionResult> {
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const pending = await repo.getPendingAction(id);
   if (!pending) return { ok: false, status: 404, error: "Pending action not found." };
   if (pending.status !== "pending") {
@@ -50,17 +50,21 @@ export async function approvePendingAction(
   }
 
   const ctx = { role, actor: session.sub, sessionId: pending.sessionId ?? undefined };
-  const result: ToolResult = await tool.apply(ctx, payload.args ?? {});
-
-  await repo.logAgentAction({
-    sessionId: pending.sessionId ?? undefined,
-    actorType: session.sub ? `${role}:${session.sub}` : role,
-    toolName: `${pending.action}#confirm`,
-    input: payload.args ?? {},
-    output: result,
-    success: result.success,
+  // The apply write, its audit row, and the pending resolution commit or
+  // roll back together — tools inside join this tx via the async scope.
+  const result: ToolResult = await withTransaction(repo, async (tx) => {
+    const r: ToolResult = await tool.apply!(ctx, payload.args ?? {});
+    await tx.logAgentAction({
+      sessionId: pending.sessionId ?? undefined,
+      actorType: session.sub ? `${role}:${session.sub}` : role,
+      toolName: `${pending.action}#confirm`,
+      input: payload.args ?? {},
+      output: r,
+      success: r.success,
+    });
+    await tx.resolvePendingAction(pending.id, r.success ? "confirmed" : "failed");
+    return r;
   });
-  await repo.resolvePendingAction(pending.id, result.success ? "confirmed" : "failed");
 
   if (!result.success) {
     return { ok: false, status: 400, error: result.error ?? "The action failed." };
@@ -77,7 +81,7 @@ export async function rejectPendingAction(
   session: SessionPayload,
   reason?: string,
 ): Promise<DecisionResult> {
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const pending = await repo.getPendingAction(id);
   if (!pending) return { ok: false, status: 404, error: "Pending action not found." };
   if (pending.status !== "pending") {
@@ -85,19 +89,28 @@ export async function rejectPendingAction(
   }
 
   let summary = pending.action;
+  let payloadArgs: unknown = {};
+  let payloadMalformed = false;
   try {
     const payload = JSON.parse(pending.payload) as { summary?: string; args?: unknown };
     summary = payload.summary ?? pending.action;
-    await repo.logAgentAction({
-      sessionId: pending.sessionId ?? undefined,
-      actorType: session.sub ? `${session.role}:${session.sub}` : session.role,
-      toolName: `${pending.action}#reject`,
-      input: payload.args ?? {},
-      output: { rejected: true, reason: reason ?? "" },
-      success: true,
-    });
-  } catch { /* malformed payload — still reject */ }
+    payloadArgs = payload.args ?? {};
+  } catch {
+    payloadMalformed = true;
+  }
 
-  await repo.resolvePendingAction(pending.id, "rejected");
+  await withTransaction(repo, async (tx) => {
+    if (!payloadMalformed) {
+      await tx.logAgentAction({
+        sessionId: pending.sessionId ?? undefined,
+        actorType: session.sub ? `${session.role}:${session.sub}` : session.role,
+        toolName: `${pending.action}#reject`,
+        input: payloadArgs,
+        output: { rejected: true, reason: reason ?? "" },
+        success: true,
+      });
+    }
+    await tx.resolvePendingAction(pending.id, "rejected");
+  });
   return { ok: true, result: { rejected: true }, summary };
 }

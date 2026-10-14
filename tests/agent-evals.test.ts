@@ -30,7 +30,7 @@ const text = (t: string): ModelTurn => ({ text: t });
 let sessionsReady = false;
 async function ensureSessions() {
   if (sessionsReady) return;
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   for (const id of ["eval-staff", "eval-public"] as const) {
     if (!(await repo.getChatSession(id))) {
       await repo.createChatSession({ id, channel: "staff", customerName: "Eval", conversationType: "ai", messages: [] });
@@ -124,7 +124,7 @@ describe("agent evals", () => {
 describe("prompt injection defenses", () => {
   test("stored inquiry text cannot trigger admin tools", async () => {
     await ensureSessions();
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const hostile = await repo.createInquiry({
       customerName: "Mallory",
       customerEmail: "mallory@example.com",

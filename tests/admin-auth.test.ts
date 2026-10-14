@@ -1,8 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { scryptSync } from "node:crypto";
 
 process.env.ADMIN_SESSION_SECRET = "test-secret-for-admin-auth";
 process.env.DATABASE_URL = ":memory:";
+
+// Credentials come from env only — provision test accounts.
+const salt = "0".repeat(32);
+const cred = (pw: string) => `${salt}:${scryptSync(pw, salt, 64).toString("hex")}`;
+process.env.ADMIN_CREDENTIAL_ADMIN = cred("admin-test-pass");
+process.env.ADMIN_CREDENTIAL_MANAGER = cred("manager-test-pass");
+process.env.ADMIN_CREDENTIAL_STAFF = cred("staff-test-pass");
 
 import {
   ADMIN_COOKIE,
@@ -26,21 +34,21 @@ function req(body: unknown, extraHeaders: Record<string, string> = {}) {
 
 // ----- credentials -----
 
-test("verifyCredentials accepts valid demo credentials", () => {
-  assert.equal(verifyCredentials("admin", "admin123"), "admin");
-  assert.equal(verifyCredentials("manager", "manager123"), "manager");
-  assert.equal(verifyCredentials("staff", "staff123"), "staff");
+test("verifyCredentials accepts valid env-configured credentials", () => {
+  assert.equal(verifyCredentials("admin", "admin-test-pass"), "admin");
+  assert.equal(verifyCredentials("manager", "manager-test-pass"), "manager");
+  assert.equal(verifyCredentials("staff", "staff-test-pass"), "staff");
 });
 
 test("verifyCredentials rejects wrong password, unknown user, empty password", () => {
   assert.equal(verifyCredentials("admin", "wrong-password"), null);
-  assert.equal(verifyCredentials("admin", "admin1234"), null);
-  assert.equal(verifyCredentials("nobody", "admin123"), null);
+  assert.equal(verifyCredentials("admin", "admin-test-pass4"), null);
+  assert.equal(verifyCredentials("nobody", "admin-test-pass"), null);
   assert.equal(verifyCredentials("admin", ""), null);
 });
 
 test("verifyCredentials is case-insensitive on username", () => {
-  assert.equal(verifyCredentials("ADMIN", "admin123"), "admin");
+  assert.equal(verifyCredentials("ADMIN", "admin-test-pass"), "admin");
 });
 
 // ----- session tokens -----
@@ -102,7 +110,7 @@ test("POST /api/admin/login returns 401 for bad credentials", async () => {
 });
 
 test("POST /api/admin/login sets a signed httpOnly session cookie", async () => {
-  const res = await postLogin(req({ username: "manager", password: "manager123" }));
+  const res = await postLogin(req({ username: "manager", password: "manager-test-pass" }));
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.role, "manager");

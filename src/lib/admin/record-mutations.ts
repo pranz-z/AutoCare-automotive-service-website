@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db/client";
-import { createRepository, type Repository } from "@/lib/db/repository";
+import { createRepository, withTransaction, type Repository } from "@/lib/db/repository";
 import { isAllowed, type SessionPayload } from "@/lib/admin-auth";
 import { getService } from "@/lib/content";
 
@@ -63,7 +63,7 @@ export async function mutateAppointment(
   const t = APPOINTMENT_ACTIONS[action as AppointmentAction];
   if (!t) return fail("Unknown appointment action.");
 
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const row = (await repo.listAppointmentsDetailed()).find(
     (a) => a.id === idOrRef || a.reference === idOrRef,
   );
@@ -78,16 +78,20 @@ export async function mutateAppointment(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
       return fail("Reschedule needs a date (YYYY-MM-DD) and time (HH:MM).");
     }
-    await repo.updateAppointmentSchedule(row.id, date, time);
   }
-  await repo.updateAppointmentStatus(row.id, t.to);
   const detail = action === "reschedule" ? ` to ${extra?.date} ${extra?.time}` : "";
-  await audit(
-    repo, session, `panel:appointment.${action}`,
-    { appointment: row.reference, from: row.status, to: t.to, ...extra },
-    { reference: row.reference, status: t.to },
-    true,
-  );
+  await withTransaction(repo, async (tx) => {
+    if (action === "reschedule") {
+      await tx.updateAppointmentSchedule(row.id, extra!.date!, extra!.time!);
+    }
+    await tx.updateAppointmentStatus(row.id, t.to);
+    await audit(
+      tx, session, `panel:appointment.${action}`,
+      { appointment: row.reference, from: row.status, to: t.to, ...extra },
+      { reference: row.reference, status: t.to },
+      true,
+    );
+  });
   return ok(`${row.reference} ${t.to.replace("_", " ")}${detail}.`);
 }
 
@@ -115,7 +119,7 @@ export async function mutateInquiryStatus(
   const t = INQUIRY_TRANSITIONS[action];
   if (!t) return fail("Unknown inquiry action.");
 
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const row = (await repo.listInquiriesDetailed()).find(
     (i) => i.id === idOrRef || i.reference === idOrRef,
   );
@@ -123,10 +127,12 @@ export async function mutateInquiryStatus(
   if (!t.from.includes(row.status)) {
     return fail(`Cannot ${t.label.toLowerCase()} an inquiry that is "${row.status}".`);
   }
-  await repo.updateInquiryStatus(row.id, t.to);
-  await audit(repo, session, `panel:inquiry.${action}`,
-    { inquiry: row.reference, from: row.status, to: t.to },
-    { reference: row.reference, status: t.to }, true);
+  await withTransaction(repo, async (tx) => {
+    await tx.updateInquiryStatus(row.id, t.to);
+    await audit(tx, session, `panel:inquiry.${action}`,
+      { inquiry: row.reference, from: row.status, to: t.to },
+      { reference: row.reference, status: t.to }, true);
+  });
   return ok(`${row.reference}: ${t.label.toLowerCase()}.`);
 }
 
@@ -138,16 +144,18 @@ export async function mutateInquiryPriority(
   if (!isAllowed(session.role, "ai.view")) return fail("Your role cannot update inquiries.");
   if (!INQUIRY_PRIORITIES.includes(priority as never)) return fail("Unknown priority.");
 
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const row = (await repo.listInquiriesDetailed()).find(
     (i) => i.id === idOrRef || i.reference === idOrRef,
   );
   if (!row) return fail("Inquiry not found.");
   if (row.status === "closed") return fail("Closed inquiries cannot be reprioritized.");
-  await repo.updateInquiryPriority(row.id, priority);
-  await audit(repo, session, "panel:inquiry.priority",
-    { inquiry: row.reference, from: row.priority, to: priority },
-    { reference: row.reference, priority }, true);
+  await withTransaction(repo, async (tx) => {
+    await tx.updateInquiryPriority(row.id, priority);
+    await audit(tx, session, "panel:inquiry.priority",
+      { inquiry: row.reference, from: row.priority, to: priority },
+      { reference: row.reference, priority }, true);
+  });
   return ok(`${row.reference} priority → ${priority}.`);
 }
 
@@ -157,7 +165,7 @@ export async function approveInquiryDraft(
 ): Promise<MutationResult> {
   if (!isAllowed(session.role, "ai.view")) return fail("Your role cannot update inquiries.");
 
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const row = (await repo.listInquiriesDetailed()).find(
     (i) => i.id === idOrRef || i.reference === idOrRef,
   );
@@ -168,9 +176,11 @@ export async function approveInquiryDraft(
   if (triage.draftApprovedAt) return fail("Draft reply was already approved.");
 
   triage.draftApprovedAt = new Date().toISOString();
-  await repo.setInquiryTriage(row.id, JSON.stringify(triage));
-  await audit(repo, session, "panel:inquiry.approve_draft",
-    { inquiry: row.reference }, { approved: true }, true);
+  await withTransaction(repo, async (tx) => {
+    await tx.setInquiryTriage(row.id, JSON.stringify(triage));
+    await audit(tx, session, "panel:inquiry.approve_draft",
+      { inquiry: row.reference }, { approved: true }, true);
+  });
   return ok(`Draft reply approved for ${row.reference}.`);
 }
 
@@ -185,7 +195,7 @@ export async function convertInquiryToAppointment(
     return fail("Convert needs a date (YYYY-MM-DD) and time (HH:MM).");
   }
 
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const row = (await repo.listInquiriesDetailed()).find(
     (i) => i.id === idOrRef || i.reference === idOrRef,
   );
@@ -194,23 +204,26 @@ export async function convertInquiryToAppointment(
     return fail(`Cannot convert an inquiry that is "${row.status}".`);
   }
 
-  const appointment = await repo.createAppointment({
-    customer: {
-      name: row.customerName,
-      email: row.customerEmail || "unknown@example.invalid",
-      phone: row.customerPhone || "n/a",
-    },
-    vehicleInfo: row.vehicle,
-    serviceId: input.serviceId,
-    branchId: input.branchId,
-    date: input.date,
-    time: input.time,
-    notes: `Converted from inquiry ${row.reference}: ${row.subject}`,
+  const appointment = await withTransaction(repo, async (tx) => {
+    const appt = await tx.createAppointment({
+      customer: {
+        name: row.customerName,
+        email: row.customerEmail || "unknown@example.invalid",
+        phone: row.customerPhone || "n/a",
+      },
+      vehicleInfo: row.vehicle,
+      serviceId: input.serviceId,
+      branchId: input.branchId,
+      date: input.date,
+      time: input.time,
+      notes: `Converted from inquiry ${row.reference}: ${row.subject}`,
+    });
+    await tx.updateInquiryStatus(row.id, "resolved");
+    await audit(tx, session, "panel:inquiry.convert",
+      { inquiry: row.reference, ...input },
+      { appointment: appt.reference, inquiry: row.reference, status: "resolved" }, true);
+    return appt;
   });
-  await repo.updateInquiryStatus(row.id, "resolved");
-  await audit(repo, session, "panel:inquiry.convert",
-    { inquiry: row.reference, ...input },
-    { appointment: appointment.reference, inquiry: row.reference, status: "resolved" }, true);
   return ok(`${row.reference} converted → booking ${appointment.reference}.`);
 }
 

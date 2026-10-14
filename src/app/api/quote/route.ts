@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     const address = reqStr(body, "address", 240);
     const notes = optStr(body, "notes", 500);
 
-    const repo = createRepository(getDb());
+    const repo = createRepository(await getDb());
     const quote = await repo.createQuote({
       customer: { name, email, phone },
       serviceId,

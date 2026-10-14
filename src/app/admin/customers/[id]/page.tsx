@@ -9,7 +9,7 @@ import { getService } from "@/lib/content";
 
 /** Exported for tests: throws notFound() (404) when the id is unknown. */
 export async function getCustomerOr404(id: string) {
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const record = await repo.getCustomer(id);
   if (!record) notFound();
   const [vehicles, appointments] = await Promise.all([

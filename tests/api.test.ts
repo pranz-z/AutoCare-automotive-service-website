@@ -47,7 +47,7 @@ test("POST /api/booking accepts a valid booking and returns a lookup-able refere
   assert.equal(data.ok, true);
   assert.match(data.reference, /^AC-\d{4}-\d{5}$/);
 
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const stored = await repo.getAppointmentByReference(data.reference);
   assert.ok(stored, "booking reference must resolve to a stored appointment");
   assert.equal(stored.customerEmail, "juan.test@example.com");
@@ -129,7 +129,7 @@ test("POST /api/contact accepts a message and returns a QI reference", async () 
   assert.equal(data.ok, true);
   assert.match(data.reference, /^QI-\d{4}-\d{5}$/);
 
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const stored = await repo.getInquiry(data.reference);
   assert.ok(stored, "contact submission must be stored as an inquiry");
 });

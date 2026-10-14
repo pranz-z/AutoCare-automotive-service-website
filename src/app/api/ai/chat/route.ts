@@ -21,6 +21,7 @@ import { createRepository } from "@/lib/db/repository";
 import type { AgentRole } from "@/lib/agent/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 const MAX_BODY_BYTES = 4096;
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = 12;
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
   const session = getAdminSessionFromRequest(request);
   const role: AgentRole = session?.role ?? "public";
 
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const rawConvId = typeof body.conversationId === "string" && /^[a-zA-Z0-9_-]{8,64}$/.test(body.conversationId)
     ? body.conversationId
     : undefined;

@@ -8,7 +8,7 @@ import { fmtDate, titleCase } from "@/lib/agent/cards";
 
 /** Exported for tests: throws notFound() (404) when the id is unknown. */
 export async function getChatOr404(id: string) {
-  const record = await createRepository(getDb()).getChatSession(id);
+  const record = await createRepository(await getDb()).getChatSession(id);
   if (!record) notFound();
   return record;
 }

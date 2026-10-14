@@ -13,12 +13,12 @@ import { pendingActionsForRecord } from "@/lib/admin/record-mutations";
 /** Resolves ?open= by internal customer id. */
 export async function getOpenCustomer(open: string | undefined) {
   if (!open) return { customer: null, missing: false };
-  const customer = (await createRepository(getDb()).getCustomer(open)) ?? null;
+  const customer = (await createRepository(await getDb()).getCustomer(open)) ?? null;
   return { customer, missing: !customer };
 }
 
 export async function getOpenCustomerContext(id: string) {
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const [vehicles, appointments, pending] = await Promise.all([
     repo.listVehicles(),
     repo.listAppointmentsDetailed(),

@@ -184,7 +184,7 @@ function shortDate(iso: string): string {
 }
 
 export async function getAdminAppointments(): Promise<Appointment[]> {
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const rows = await repo.listAppointmentsDetailed();
   const vehicleRows = await repo.listVehicles();
   const vehicleById = new Map(vehicleRows.map((v) => [v.id, v]));
@@ -227,7 +227,7 @@ export async function getAdminAppointments(): Promise<Appointment[]> {
 }
 
 export async function getAdminCustomers(): Promise<CustomerProfile[]> {
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const [customers, vehicles, appointments] = await Promise.all([
     repo.listCustomers(),
     repo.listVehicles(),
@@ -264,7 +264,7 @@ export async function getAdminCustomers(): Promise<CustomerProfile[]> {
 }
 
 export async function getAdminChats(): Promise<ChatConversation[]> {
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const sessions = await repo.listChatSessions();
   return sessions.map((s) => {
     const ctx = s.customerContext as Partial<ChatConversation["customerContext"]>;
@@ -293,7 +293,7 @@ export async function getAdminChats(): Promise<ChatConversation[]> {
 }
 
 export async function getAdminInquiries(): Promise<Inquiry[]> {
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const rows = await repo.listInquiriesDetailed();
   return rows.map((row) => {
     let triageSummary: string | undefined;
@@ -354,7 +354,7 @@ export async function getAdminAppointment(id: string) {
   // Accepts either the internal row id (appt-…) or the display reference
   // (AC-YYYY-NNNNN). Adapter rows expose the reference as `id`, so resolve
   // against the detailed rows first.
-  const repo = createRepository(getDb());
+  const repo = createRepository(await getDb());
   const row = (await repo.listAppointmentsDetailed()).find(
     (a) => a.id === id || a.reference === id,
   );
