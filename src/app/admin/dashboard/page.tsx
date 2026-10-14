@@ -6,8 +6,8 @@ import { requireAdminSession } from "@/lib/admin-auth";
 export default async function AdminDashboardPage() {
   await requireAdminSession("appointments.view");
 
-  const stats = getAdminDashboardStats();
-  const appointments = getRecentAppointments(4);
+  const stats = await getAdminDashboardStats();
+  const appointments = await getRecentAppointments(4);
 
   return (
     <AdminPageFrame title="Dashboard" subtitle="Service operations overview">

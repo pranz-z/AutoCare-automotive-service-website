@@ -1,4 +1,5 @@
 import type { ServiceItem } from "@/types/content";
+import { containsPersonalData, DEMO_PRIVACY_ERROR } from "@/lib/ai/demo-privacy";
 
 export const MAX_ISSUE_LENGTH = 1000;
 export const MAX_VEHICLE_FIELD_LENGTH = 80;
@@ -31,6 +32,7 @@ export function validateGuideInput(value: unknown): GuideInput {
   }
   if (typeof input.issue !== "string" || !input.issue.trim()) throw new GuideInputError("Describe the vehicle issue.");
   if (input.issue.trim().length > MAX_ISSUE_LENGTH) throw new GuideInputError("Issue description is too long.");
+  if (containsPersonalData(input.issue)) throw new GuideInputError(DEMO_PRIVACY_ERROR);
   const clean: GuideInput = { issue: input.issue.trim() };
   for (const key of ["make", "model", "year"] as const) {
     const field = input[key];
@@ -38,6 +40,7 @@ export function validateGuideInput(value: unknown): GuideInput {
       if (typeof field !== "string" || field.length > MAX_VEHICLE_FIELD_LENGTH) {
         throw new GuideInputError(`Invalid ${key} value.`);
       }
+      if (containsPersonalData(field)) throw new GuideInputError(DEMO_PRIVACY_ERROR);
       if (field.trim()) clean[key] = field.trim();
     }
   }

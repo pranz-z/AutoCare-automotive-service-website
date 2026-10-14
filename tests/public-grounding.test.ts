@@ -45,6 +45,19 @@ test("unsupported and private questions never call Gemini or select privileged c
   assert.equal(calls, 0);
 });
 
+test("blocks personal data in new messages and prior history before Gemini", async () => {
+  let calls = 0;
+  const generate = async () => { calls++; return "ok"; };
+  for (const text of ["oil change person@example.com", "oil change +639171234567", "oil change VIN 1HGCM82633A004352", "oil change plate ABC1234"]) {
+    const result = await answerPublicQuestion(text, [], generate);
+    assert.match(result.reply, /synthetic example/i);
+    assert.deepEqual(result.sources, []);
+  }
+  const result = await answerPublicQuestion("oil change", [{ role: "user", content: "person@example.com" }], generate);
+  assert.match(result.reply, /synthetic example/i);
+  assert.equal(calls, 0);
+});
+
 test("retains safety handling without contacting Gemini", async () => {
   const result = await answerPublicQuestion("My brakes are failing", [], async () => { throw new Error("should not be called"); });
   assert.match(result.reply, /inspected|driv/i);

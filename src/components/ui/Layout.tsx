@@ -94,6 +94,7 @@ export function Field({
   value,
   onChange,
   placeholder,
+  min,
   as = "input",
   options,
 }: {
@@ -104,6 +105,7 @@ export function Field({
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  min?: string;
   as?: "input" | "textarea" | "select";
   options?: { value: string; label: string }[];
 }) {
@@ -147,6 +149,7 @@ export function Field({
           required={required}
           value={value}
           placeholder={placeholder}
+          min={min}
           onChange={(event) => onChange(event.target.value)}
           className={shared}
         />

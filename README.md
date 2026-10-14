@@ -131,7 +131,9 @@ GEMINI_API_KEY=your_google_gemini_api_key
 GEMINI_MODEL=gemini-3.8-flash
 ```
 
-On Vercel, add the same variables in Project Settings → Environment Variables. Do not use a `NEXT_PUBLIC_` prefix for the API key.
+This is a professional demo, not a live automotive service. Use **synthetic demo scenarios only** with the free Gemini tier; do not enter actual client/customer data, personal or confidential information. Both AI endpoints reject common email, phone, VIN, plate, and labeled identifier patterns in submitted text, but free-form filtering cannot guarantee detection of every identifier or sensitive detail. The quote form itself remains separate from the AI guide. Do not invite external visitors to use live Gemini calls until the owner reviews Google's current API terms/data handling and confirms the audience and access posture meet the under-18 restriction. The repository does not configure Vercel Deployment Protection or a shared rate-limit store; verify deployment access settings in Vercel. Current rate limits are best-effort per serverless instance, not global. Keep `GEMINI_API_KEY` unset on publicly accessible environments until these decisions are resolved.
+
+On Vercel, add server-side variables only after that review in Project Settings → Environment Variables. Do not use a `NEXT_PUBLIC_` prefix for the API key.
 
 ## Production Build
 

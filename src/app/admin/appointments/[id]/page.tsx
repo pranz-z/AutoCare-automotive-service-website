@@ -1,12 +1,12 @@
 import { notFound } from "next/navigation";
 import { AdminPageFrame } from "@/components/admin/AdminLayout";
 import { requireAdminSession } from "@/lib/admin-auth";
-import { adminAppointments } from "@/lib/admin-data";
+import { getAdminAppointment } from "@/lib/admin-data";
 
 export default async function AdminAppointmentDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdminSession("appointments.view");
   const { id } = await params;
-  const appointment = adminAppointments.find((item) => item.id === id);
+  const appointment = await getAdminAppointment(id);
 
   if (!appointment) {
     notFound();

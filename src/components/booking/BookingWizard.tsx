@@ -67,6 +67,7 @@ export function BookingWizard({ initialService = "" }: { initialService?: string
   const [step, setStep] = useState(0);
   const [error, setError] = useState("");
   const [ref, setRef] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<FormState>({ ...empty, service: initialService });
 
   const selectedService = services.find((item) => item.id === form.service);
@@ -98,6 +99,29 @@ export function BookingWizard({ initialService = "" }: { initialService?: string
     return "";
   };
 
+  const submit = async () => {
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await fetch("/api/booking", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = (await response.json()) as { ok?: boolean; reference?: string; error?: string };
+      if (!response.ok || !data.ok || !data.reference) {
+        setError(data.error ?? "The booking could not be saved. Please try again.");
+        return;
+      }
+      setRef(data.reference);
+      setStep(8);
+    } catch {
+      setError("Could not reach the server. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const next = () => {
     const message = validate();
     if (message) {
@@ -105,9 +129,7 @@ export function BookingWizard({ initialService = "" }: { initialService?: string
       return;
     }
     if (step === 7) {
-      const id = `AC-${Date.now().toString().slice(-8)}`;
-      setRef(id);
-      setStep(8);
+      void submit();
       return;
     }
     setStep((value) => Math.min(value + 1, steps.length - 1));
@@ -276,6 +298,7 @@ export function BookingWizard({ initialService = "" }: { initialService?: string
             type="date"
             required
             value={form.date}
+            min={minDate}
             onChange={(value) => set("date", value)}
           />
         ) : null}
@@ -350,8 +373,8 @@ export function BookingWizard({ initialService = "" }: { initialService?: string
             <Button type="button" variant="light" onClick={() => setStep((value) => Math.max(0, value - 1))} disabled={step === 0}>
               Back
             </Button>
-            <Button type="button" onClick={next}>
-              {step === 7 ? "Submit booking" : "Continue"}
+            <Button type="button" onClick={next} disabled={submitting}>
+              {step === 7 ? (submitting ? "Submitting…" : "Submit booking") : "Continue"}
             </Button>
           </div>
         ) : null}

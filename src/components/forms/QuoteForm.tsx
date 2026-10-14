@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { GuideResult } from "@/lib/ai/service-guide";
+import { DEMO_PRIVACY_NOTICE } from "@/lib/ai/demo-privacy";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Layout";
 import { getLocations, getServices, getSite, getVehicleBrands } from "@/lib/content";
@@ -48,6 +49,7 @@ export function QuoteForm() {
   const [form, setForm] = useState<QuoteState>(empty);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [guide, setGuide] = useState<GuideResult | null>(null);
   const [guideError, setGuideError] = useState("");
   const [guideLoading, setGuideLoading] = useState(false);
@@ -88,7 +90,7 @@ export function QuoteForm() {
   const cities = locations.find((item) => item.id === form.province)?.cities ?? [];
   const set = (key: keyof QuoteState, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!form.service || !form.make || !form.model || !form.year) {
       setError("Service and vehicle details are required.");
@@ -107,7 +109,24 @@ export function QuoteForm() {
       return;
     }
     setError("");
-    setDone(`QT-${Date.now().toString().slice(-8)}`);
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/quote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = (await response.json()) as { ok?: boolean; reference?: string; error?: string };
+      if (!response.ok || !data.ok || !data.reference) {
+        setError(data.error ?? "The quote request could not be saved. Please try again.");
+        return;
+      }
+      setDone(data.reference);
+    } catch {
+      setError("Could not reach the server. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (done) {
@@ -184,6 +203,7 @@ export function QuoteForm() {
             {guideLoading ? "Finding relevant services…" : "Help me find the right service"}
           </button>
           <span className="text-xs text-muted">General guidance only—not a diagnosis.</span>
+          <p className="basis-full text-xs text-muted">{DEMO_PRIVACY_NOTICE}</p>
         </div>
         {guideError ? <p role="alert" className="mt-2 text-sm text-red-700">{guideError} You can still submit your quote.</p> : null}
         {guide ? (
@@ -242,7 +262,7 @@ export function QuoteForm() {
       </div>
       {error ? <p className="sm:col-span-2 text-sm text-accent">{error}</p> : null}
       <div className="sm:col-span-2">
-        <Button type="submit">Request Quote</Button>
+        <Button type="submit" disabled={submitting}>{submitting ? "Sending…" : "Request Quote"}</Button>
       </div>
     </form>
   );

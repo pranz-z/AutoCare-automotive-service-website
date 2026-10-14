@@ -20,6 +20,10 @@ test("rejects invalid input and accepts issue text up to the maximum length", ()
   assert.throws(() => validateGuideInput(null), GuideInputError);
   assert.throws(() => validateGuideInput({ issue: "  " }), GuideInputError);
   assert.throws(() => validateGuideInput({ issue: "x", name: "private data" }), GuideInputError);
+  for (const issue of ["Email me at person@example.com", "My phone is +639171234567", "VIN 1HGCM82633A004352", "Plate ABC 1234"]) {
+    assert.throws(() => validateGuideInput({ issue }), GuideInputError);
+  }
+  assert.throws(() => validateGuideInput({ issue: "oil leak", model: "plate ABC1234" }), GuideInputError);
   assert.throws(() => validateGuideInput({ issue: "x".repeat(MAX_ISSUE_LENGTH + 1) }), GuideInputError);
   assert.equal(validateGuideInput({ issue: "x".repeat(MAX_ISSUE_LENGTH) }).issue.length, MAX_ISSUE_LENGTH);
 });

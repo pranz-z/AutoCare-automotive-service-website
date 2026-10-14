@@ -1,5 +1,6 @@
 import { getArticles, getFaqs, getLocations, getServices, getVehicleBrands } from "@/lib/content";
 import { detectSafetyIssue } from "@/lib/ai/assistant";
+import { containsPersonalData, DEMO_PRIVACY_ERROR } from "@/lib/ai/demo-privacy";
 
 export type PublicSource = { label: string; href: string; text: string };
 export type SourceLink = Pick<PublicSource, "label" | "href">;
@@ -53,6 +54,9 @@ export function getUnsupportedReply() { return UNSUPPORTED; }
 
 export async function answerPublicQuestion(question: string, history: { role: string; content: string }[], generate: (prompt: string) => Promise<string>) {
   const safety = detectSafetyIssue(question);
+  if (containsPersonalData(question) || history.some(({ content }) => containsPersonalData(content))) {
+    return { reply: DEMO_PRIVACY_ERROR, sources: [] as SourceLink[], safety };
+  }
   if (safety.isCritical) return { reply: `${safety.reason}: ${safety.recommendation} Please contact us for professional assistance.`, sources: [] as SourceLink[], safety };
   if (isPrivateRequest(question)) return { reply: UNSUPPORTED, sources: [] as SourceLink[], safety };
   const sources = selectPublicSources(question);

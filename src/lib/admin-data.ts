@@ -1,3 +1,14 @@
+import { getService } from "@/lib/content";
+import { formatPrice } from "@/lib/content";
+import { getDb } from "@/lib/db/client";
+import { createRepository } from "@/lib/db/repository";
+
+/**
+ * Admin view adapter — maps canonical database records to the display shapes
+ * the admin pages render. Statuses are stored lowercase-snake and presented
+ * in the admin UI's Title Case vocabulary.
+ */
+
 export type AppointmentStatus =
   | "Pending"
   | "Confirmed"
@@ -102,314 +113,251 @@ export type Inquiry = {
   priority: InquiryPriority;
   status: "Open" | "Assigned" | "Resolved" | "Closed";
   assignedStaff: string;
+  /** Auto-triage summary from the submission hook, if present. */
+  triageSummary?: string;
   createdAt: string;
 };
 
-export const adminAppointments: Appointment[] = [
-  {
-    id: "MG-2026-0012",
-    customerName: "Juan Dela Cruz",
-    customerPhone: "+63 917 555 0142",
-    customerEmail: "juan.dela.cruz@email.com",
-    vehicle: "2020 Honda Civic 1.8",
-    make: "Honda",
-    model: "Civic",
-    year: "2020",
-    variant: "1.8 Sport",
-    mileage: "28,430 km",
-    service: "Preventive Maintenance",
-    serviceDescription: "Full service package, fluid check, inspection and maintenance planning.",
-    price: "₱ 3,200",
-    duration: "2.5 hours",
-    branch: "Pampanga",
-    branchAddress: "Northpoint Service Hub, Pampanga",
-    branchContact: "+63 917 123 4567",
-    operatingHours: "Mon-Sun • 8:00 AM - 7:00 PM",
-    date: "2026-09-27",
-    time: "10:00 AM",
-    status: "Pending",
-    createdAt: "2026-09-26 09:10",
-    customerNotes: "Vehicle is due for PMS and wants same-day inspection before long trip.",
-    aiSummary: "Customer asked about preventive maintenance and current price options.",
-    activities: [
-      { time: "09:12 AM", actorType: "customer", action: "Customer created booking" },
-      { time: "09:18 AM", actorType: "admin", action: "Staff confirmed booking request" },
-      { time: "09:45 AM", actorType: "ai", action: "AI suggested PMS package" },
-    ],
-  },
-  {
-    id: "MG-2026-0016",
-    customerName: "Maria Santos",
-    customerPhone: "+63 921 800 2211",
-    customerEmail: "maria.santos@email.com",
-    vehicle: "2022 Toyota Vios",
-    make: "Toyota",
-    model: "Vios",
-    year: "2022",
-    variant: "1.3 E",
-    mileage: "18,120 km",
-    service: "Oil Change",
-    serviceDescription: "Synthetic engine oil replacement with filter change and quick inspection.",
-    price: "₱ 1,800",
-    duration: "1.5 hours",
-    branch: "Quezon City",
-    branchAddress: "AutoCare QC Branch",
-    branchContact: "+63 919 001 9810",
-    operatingHours: "Mon-Sun • 8:00 AM - 7:00 PM",
-    date: "2026-09-29",
-    time: "11:30 AM",
-    status: "Confirmed",
-    createdAt: "2026-09-25 17:30",
-    customerNotes: "Prefers a morning slot and has a work-from-home schedule.",
-    aiSummary: "Oil change request with a confirmed time slot.",
-    activities: [
-      { time: "17:30 PM", actorType: "customer", action: "Requested oil change" },
-      { time: "17:42 PM", actorType: "system", action: "Booking assigned to Quezon City branch" },
-      { time: "18:05 PM", actorType: "staff", action: "Confirmed appointment" },
-    ],
-  },
-  {
-    id: "MG-2026-0021",
-    customerName: "Pedro Reyes",
-    customerPhone: "+63 995 112 7824",
-    customerEmail: "pedro.reyes@email.com",
-    vehicle: "2019 Mitsubishi Mirage G4",
-    make: "Mitsubishi",
-    model: "Mirage G4",
-    year: "2019",
-    variant: "GLX",
-    mileage: "42,240 km",
-    service: "Brake Service",
-    serviceDescription: "Brake inspection, rotor and pad check and replacement planning.",
-    price: "₱ 5,600",
-    duration: "3 hours",
-    branch: "Taguig",
-    branchAddress: "AutoCare Taguig Workshop",
-    branchContact: "+63 917 771 9890",
-    operatingHours: "Mon-Sun • 8:00 AM - 7:00 PM",
-    date: "2026-09-28",
-    time: "2:00 PM",
-    status: "In Service",
-    createdAt: "2026-09-24 15:10",
-    customerNotes: "Vehicle brakes feel soft after rain - safety concern. Requested urgent priority.",
-    aiSummary: "AI escalated the conversation after the customer reported possible brake issue.",
-    activities: [
-      { time: "15:10 PM", actorType: "ai", action: "AI flagged safety-critical concern" },
-      { time: "15:16 PM", actorType: "staff", action: "Assigned to workshop and moved to in service" },
-    ],
-  },
-  {
-    id: "MG-2026-0025",
-    customerName: "Ken Lopez",
-    customerPhone: "+63 920 334 8990",
-    customerEmail: "ken.lopez@email.com",
-    vehicle: "2023 Honda City",
-    make: "Honda",
-    model: "City",
-    year: "2023",
-    variant: "RS",
-    mileage: "8,900 km",
-    service: "Battery Service",
-    serviceDescription: "Battery health check and replacement when needed.",
-    price: "₱ 2,900",
-    duration: "1 hour",
-    branch: "Cebu",
-    branchAddress: "AutoCare Cebu Service Bay",
-    branchContact: "+63 926 988 7761",
-    operatingHours: "Mon-Sun • 8:00 AM - 7:00 PM",
-    date: "2026-09-30",
-    time: "9:00 AM",
-    status: "Completed",
-    createdAt: "2026-09-20 11:20",
-    customerNotes: "Battery warning light appeared after start-up. Customer reports intermittent start issues.",
-    aiSummary: "Battery diagnosis and replacement completed.",
-    activities: [
-      { time: "11:20 AM", actorType: "customer", action: "Requested battery check" },
-      { time: "11:38 AM", actorType: "staff", action: "Completed service and closed booking" },
-    ],
-  },
-];
+const APPOINTMENT_STATUS: Record<string, AppointmentStatus> = {
+  pending: "Pending",
+  confirmed: "Confirmed",
+  in_service: "In Service",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  no_show: "No Show",
+  rescheduled: "Rescheduled",
+};
 
-export const adminCustomers: CustomerProfile[] = [
-  {
-    id: "C-1001",
-    name: "Juan Dela Cruz",
-    phone: "+63 917 555 0142",
-    email: "juan.dela.cruz@email.com",
-    vehicles: [
-      { make: "Honda", model: "Civic", year: "2020", variant: "1.8 Sport", mileage: "28,430 km" },
-    ],
-    totalBookings: 3,
-    lastBooking: "Preventive Maintenance | Sep 20, 2026",
-    upcomingBooking: "PMS | Sep 27, 2026",
-    conversationStatus: "Needs Staff",
-  },
-  {
-    id: "C-1002",
-    name: "Maria Santos",
-    phone: "+63 921 800 2211",
-    email: "maria.santos@email.com",
-    vehicles: [
-      { make: "Toyota", model: "Vios", year: "2022", variant: "1.3 E", mileage: "18,120 km" },
-    ],
-    totalBookings: 2,
-    lastBooking: "Oil Change | Sep 15, 2026",
-    upcomingBooking: "Oil Change | Sep 29, 2026",
-    conversationStatus: "AI Handling",
-  },
-  {
-    id: "C-1003",
-    name: "Pedro Reyes",
-    phone: "+63 995 112 7824",
-    email: "pedro.reyes@email.com",
-    vehicles: [
-      { make: "Mitsubishi", model: "Mirage G4", year: "2019", variant: "GLX", mileage: "42,240 km" },
-    ],
-    totalBookings: 4,
-    lastBooking: "Brake Service | Sep 18, 2026",
-    upcomingBooking: "Brake Service | Sep 28, 2026",
-    conversationStatus: "Assigned",
-  },
-];
+const CONVERSATION_STATUS: Record<string, CustomerProfile["conversationStatus"]> = {
+  ai_handling: "AI Handling",
+  needs_staff: "Needs Staff",
+  assigned: "Assigned",
+  resolved: "Resolved",
+  closed: "Closed",
+};
 
-export const adminChats: ChatConversation[] = [
-  {
-    id: "CH-101",
-    customerName: "Juan Dela Cruz",
-    customerPhone: "+63 917 555 0142",
-    vehicle: "2020 Honda Civic 1.8",
-    lastMessage: "How much is the preventive maintenance package for my Civic?",
-    timestamp: "2 min ago",
-    status: "Needs Staff",
-    assignedStaff: "Unassigned",
-    conversationType: "AI",
-    priority: "High",
-    customerContext: {
-      phone: "+63 917 555 0142",
-      email: "juan.dela.cruz@email.com",
-      vehicle: "2020 Honda Civic 1.8",
-      bookingsTotal: 3,
-      upcomingBooking: "Sep 27, 2026",
-      branch: "Pampanga",
-    },
-    messages: [
-      { id: "m-1", sender: "customer", senderLabel: "Customer", content: "How much is the preventive maintenance package for my Civic?", time: "9:10 AM" },
-      { id: "m-2", sender: "ai", senderLabel: "AI Assistant", content: "Our current PMS package starts at ₱ 3,200 for the standard preventive maintenance service.", time: "9:11 AM", metadata: "Gemini 3.8 Flash • Service Database • 1.8s" },
-      { id: "m-3", sender: "customer", senderLabel: "Customer", content: "Can I book tomorrow morning?", time: "9:12 AM" },
-      { id: "m-4", sender: "ai", senderLabel: "AI Assistant", content: "We can check the early slot for your preferred branch and service.", time: "9:13 AM" },
-      { id: "m-5", sender: "system", senderLabel: "System", content: "AI escalated to staff due to booking follow-up needs.", time: "9:14 AM" },
-    ],
-  },
-  {
-    id: "CH-102",
-    customerName: "Maria Santos",
-    customerPhone: "+63 921 800 2211",
-    vehicle: "2022 Toyota Vios",
-    lastMessage: "Can I get an oil change this week?",
-    timestamp: "5 min ago",
-    status: "AI Handling",
-    assignedStaff: "Unassigned",
-    conversationType: "AI",
-    priority: "Normal",
-    customerContext: {
-      phone: "+63 921 800 2211",
-      email: "maria.santos@email.com",
-      vehicle: "2022 Toyota Vios",
-      bookingsTotal: 2,
-      upcomingBooking: "Sep 29, 2026",
-      branch: "Quezon City",
-    },
-    messages: [
-      { id: "m-1", sender: "customer", senderLabel: "Customer", content: "Can I get an oil change this week?", time: "9:18 AM" },
-      { id: "m-2", sender: "ai", senderLabel: "AI Assistant", content: "Yes, we have oil change slots available this week. I can help review the recommended timing and branch options.", time: "9:18 AM" },
-    ],
-  },
-  {
-    id: "CH-103",
-    customerName: "Pedro Reyes",
-    customerPhone: "+63 995 112 7824",
-    vehicle: "2019 Mitsubishi Mirage G4",
-    lastMessage: "The brake pedal feels soft after the rain.",
-    timestamp: "10 min ago",
-    status: "Assigned",
-    assignedStaff: "John Santos",
-    conversationType: "Mixed",
-    priority: "Urgent",
-    customerContext: {
-      phone: "+63 995 112 7824",
-      email: "pedro.reyes@email.com",
-      vehicle: "2019 Mitsubishi Mirage G4",
-      bookingsTotal: 4,
-      upcomingBooking: "Sep 28, 2026",
-      branch: "Taguig",
-    },
-    messages: [
-      { id: "m-1", sender: "customer", senderLabel: "Customer", content: "The brake pedal feels soft after the rain.", time: "8:56 AM" },
-      { id: "m-2", sender: "ai", senderLabel: "AI Assistant", content: "This may need urgent inspection. Please avoid driving if you feel a loss of braking performance.", time: "8:57 AM" },
-      { id: "m-3", sender: "staff", senderLabel: "Staff", content: "I have scheduled a brake inspection and can move this to the workshop.", time: "8:59 AM" },
-    ],
-  },
-];
+const INQUIRY_STATUS: Record<string, Inquiry["status"]> = {
+  new: "Open",
+  reviewed: "Assigned",
+  contacted: "Assigned",
+  responded: "Resolved",
+  resolved: "Resolved",
+  closed: "Closed",
+};
 
-export const adminInquiries: Inquiry[] = [
-  {
-    id: "INQ-1101",
-    customer: "Juan Dela Cruz",
-    vehicle: "2020 Honda Civic 1.8",
-    category: "Booking",
-    description: "Customer wants a morning PMS booking but prefers a mobile check before the visit.",
-    branch: "Pampanga",
-    priority: "High",
-    status: "Open",
-    assignedStaff: "Unassigned",
-    createdAt: "2026-09-27 08:45",
-  },
-  {
-    id: "INQ-1103",
-    customer: "Pedro Reyes",
-    vehicle: "2019 Mitsubishi Mirage G4",
-    category: "Complaint",
-    description: "Customer reports soft braking and wants immediate review.",
-    branch: "Taguig",
-    priority: "Urgent",
-    status: "Assigned",
-    assignedStaff: "John Santos",
-    createdAt: "2026-09-27 08:12",
-  },
-];
+const INQUIRY_CATEGORY: Record<string, InquiryCategory> = {
+  quote: "Pricing",
+  booking: "Booking",
+  general: "Other",
+  maintenance: "Maintenance",
+  complaint: "Complaint",
+  branch: "Branch",
+  warranty: "Warranty",
+};
 
-export function getAdminDashboardStats() {
-  const totalAppointments = adminAppointments.length;
-  const pending = adminAppointments.filter((item) => item.status === "Pending").length;
-  const confirmed = adminAppointments.filter((item) => item.status === "Confirmed").length;
-  const inService = adminAppointments.filter((item) => item.status === "In Service").length;
-  const completed = adminAppointments.filter((item) => item.status === "Completed").length;
-  const customerConversations = adminChats.length;
-  const aiConversations = adminChats.filter((item) => item.conversationType === "AI" || item.conversationType === "Mixed").length;
-  const escalations = adminChats.filter((item) => item.status === "Needs Staff" || item.priority === "Urgent").length;
+const PRIORITY: Record<string, InquiryPriority> = {
+  low: "Low",
+  normal: "Normal",
+  medium: "Normal",
+  high: "High",
+  urgent: "Urgent",
+};
 
+const CONVERSATION_TYPE: Record<string, ChatConversation["conversationType"]> = {
+  ai: "AI",
+  staff: "Staff",
+  mixed: "Mixed",
+};
+
+function to12h(time: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(time);
+  if (!m) return time;
+  const h = Number(m[1]);
+  const suffix = h >= 12 ? "PM" : "AM";
+  const hour = h % 12 === 0 ? 12 : h % 12;
+  return `${hour}:${m[2]} ${suffix}`;
+}
+
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toISOString().slice(0, 16).replace("T", " ");
+}
+
+export async function getAdminAppointments(): Promise<Appointment[]> {
+  const repo = createRepository(getDb());
+  const rows = await repo.listAppointmentsDetailed();
+  const vehicleRows = await repo.listVehicles();
+  const vehicleById = new Map(vehicleRows.map((v) => [v.id, v]));
+
+  return rows.map((row) => {
+    const service = getService(row.serviceId);
+    const vehicle = row.vehicleId ? vehicleById.get(row.vehicleId) : undefined;
+    return {
+      id: row.reference,
+      customerName: row.customerName,
+      customerPhone: row.customerPhone,
+      customerEmail: row.customerEmail,
+      vehicle: row.vehicleInfo,
+      make: vehicle?.make ?? "",
+      model: vehicle?.model ?? "",
+      year: vehicle?.year ?? "",
+      variant: vehicle?.variant ?? "",
+      mileage: vehicle?.mileage || undefined,
+      service: service?.name ?? row.serviceId,
+      serviceDescription: service?.shortDescription ?? "",
+      price: service ? formatPrice(service.priceFrom) : "",
+      duration: service?.duration ?? "",
+      branch: row.branchName.replace(/^AutoCare\s*/, ""),
+      branchAddress: row.branchAddress,
+      branchContact: row.branchPhone,
+      operatingHours: row.branchHours,
+      date: row.date,
+      time: to12h(row.time),
+      status: APPOINTMENT_STATUS[row.status] ?? "Pending",
+      createdAt: shortDate(row.createdAt),
+      customerNotes: row.notes,
+      activities: [
+        { time: shortDate(row.createdAt), actorType: "customer" as const, action: "Customer submitted booking" },
+        ...(row.status !== "pending"
+          ? [{ time: "", actorType: "system" as const, action: `Status: ${APPOINTMENT_STATUS[row.status] ?? row.status}` }]
+          : []),
+      ],
+    };
+  });
+}
+
+export async function getAdminCustomers(): Promise<CustomerProfile[]> {
+  const repo = createRepository(getDb());
+  const [customers, vehicles, appointments] = await Promise.all([
+    repo.listCustomers(),
+    repo.listVehicles(),
+    repo.listAppointmentsDetailed(),
+  ]);
+  const vehiclesByCustomer = new Map<string, typeof vehicles>();
+  for (const v of vehicles) {
+    vehiclesByCustomer.set(v.customerId, [...(vehiclesByCustomer.get(v.customerId) ?? []), v]);
+  }
+
+  return customers.map((c) => {
+    const theirs = appointments.filter((a) => a.customerId === c.id);
+    const upcoming = theirs.find((a) => a.status === "pending" || a.status === "confirmed");
+    const latest = theirs[0];
+    const svc = (id: string) => getService(id)?.name ?? id;
+    return {
+      id: c.id,
+      name: c.name,
+      phone: c.phone,
+      email: c.email,
+      vehicles: (vehiclesByCustomer.get(c.id) ?? []).map((v) => ({
+        make: v.make,
+        model: v.model,
+        year: v.year,
+        variant: v.variant,
+        mileage: v.mileage || undefined,
+      })),
+      totalBookings: theirs.length,
+      lastBooking: latest ? `${svc(latest.serviceId)} | ${latest.date}` : "—",
+      upcomingBooking: upcoming ? `${svc(upcoming.serviceId)} | ${upcoming.date}` : "—",
+      conversationStatus: CONVERSATION_STATUS[c.conversationStatus] ?? "AI Handling",
+    };
+  });
+}
+
+export async function getAdminChats(): Promise<ChatConversation[]> {
+  const repo = createRepository(getDb());
+  const sessions = await repo.listChatSessions();
+  return sessions.map((s) => {
+    const ctx = s.customerContext as Partial<ChatConversation["customerContext"]>;
+    return {
+      id: s.id,
+      customerName: s.customerName,
+      customerPhone: s.customerPhone,
+      vehicle: s.vehicle,
+      lastMessage: s.lastMessage,
+      timestamp: s.lastMessageAt,
+      status: CONVERSATION_STATUS[s.status] ?? "AI Handling",
+      assignedStaff: s.assignedStaff || "Unassigned",
+      conversationType: CONVERSATION_TYPE[s.conversationType] ?? "AI",
+      priority: (PRIORITY[s.priority] ?? "Normal") as ChatConversation["priority"],
+      messages: s.messages,
+      customerContext: {
+        phone: ctx.phone ?? s.customerPhone,
+        email: ctx.email ?? "",
+        vehicle: ctx.vehicle ?? s.vehicle,
+        bookingsTotal: ctx.bookingsTotal ?? 0,
+        upcomingBooking: ctx.upcomingBooking ?? "—",
+        branch: ctx.branch ?? "—",
+      },
+    };
+  });
+}
+
+export async function getAdminInquiries(): Promise<Inquiry[]> {
+  const repo = createRepository(getDb());
+  const rows = await repo.listInquiriesDetailed();
+  return rows.map((row) => {
+    let triageSummary: string | undefined;
+    if (row.triage) {
+      try {
+        const t = JSON.parse(row.triage) as { urgency?: string; suggestedServiceName?: string | null };
+        triageSummary = `${t.urgency ?? "?"}${t.suggestedServiceName ? ` · ${t.suggestedServiceName}` : ""}`;
+      } catch { /* no triage */ }
+    }
+    return {
+      id: row.reference,
+      customer: row.customerName,
+      vehicle: row.vehicle,
+      category: INQUIRY_CATEGORY[row.category] ?? "Other",
+      description: row.message || row.subject,
+      branch: "Website",
+      priority: PRIORITY[row.priority] ?? "Normal",
+      status: INQUIRY_STATUS[row.status] ?? "Open",
+      assignedStaff: "Unassigned",
+      triageSummary,
+      createdAt: shortDate(row.createdAt),
+    };
+  });
+}
+
+export async function getAdminDashboardStats() {
+  const [appointments, chats] = await Promise.all([getAdminAppointments(), getAdminChats()]);
+  const count = (status: AppointmentStatus) => appointments.filter((a) => a.status === status).length;
   return {
-    totalAppointments,
-    pending,
-    confirmed,
-    inService,
-    completed,
-    customerConversations,
-    aiConversations,
-    escalations,
+    totalAppointments: appointments.length,
+    pending: count("Pending"),
+    confirmed: count("Confirmed"),
+    inService: count("In Service"),
+    completed: count("Completed"),
+    customerConversations: chats.length,
+    aiConversations: chats.filter((c) => c.conversationType !== "Staff").length,
+    escalations: chats.filter((c) => c.status === "Needs Staff" || c.priority === "Urgent").length,
   };
 }
 
-export function getRecentAppointments(limit = 4) {
-  return [...adminAppointments].slice(0, limit);
+export async function getRecentAppointments(limit = 4) {
+  return (await getAdminAppointments()).slice(0, limit);
 }
 
-export function getAppointmentsByStatus(status?: string) {
-  if (!status || status === "All") return adminAppointments;
-  return adminAppointments.filter((item) => item.status === status);
+export async function getAppointmentsByStatus(status?: string) {
+  const all = await getAdminAppointments();
+  if (!status || status === "All") return all;
+  return all.filter((item) => item.status === status);
 }
 
-export function getAdminChatsByStatus(status?: string) {
-  if (!status || status === "All") return adminChats;
-  return adminChats.filter((item) => item.status === status);
+export async function getAdminChatsByStatus(status?: string) {
+  const all = await getAdminChats();
+  if (!status || status === "All") return all;
+  return all.filter((item) => item.status === status);
+}
+
+export async function getAdminAppointment(id: string) {
+  // Accepts either the internal row id (appt-…) or the display reference
+  // (AC-YYYY-NNNNN). Adapter rows expose the reference as `id`, so resolve
+  // against the detailed rows first.
+  const repo = createRepository(getDb());
+  const row = (await repo.listAppointmentsDetailed()).find(
+    (a) => a.id === id || a.reference === id,
+  );
+  if (!row) return undefined;
+  return (await getAdminAppointments()).find((item) => item.id === row.reference);
 }

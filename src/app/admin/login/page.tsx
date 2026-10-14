@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -44,6 +44,9 @@ export default function AdminLoginPage() {
           <label className="block text-sm text-muted">
             Username
             <input
+              name="username"
+              autoComplete="username"
+              required
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               className="mt-2 w-full border border-line bg-white px-3 py-2 text-ink"
@@ -53,7 +56,10 @@ export default function AdminLoginPage() {
           <label className="block text-sm text-muted">
             Password
             <input
+              name="password"
               type="password"
+              autoComplete="current-password"
+              required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="mt-2 w-full border border-line bg-white px-3 py-2 text-ink"

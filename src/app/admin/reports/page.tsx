@@ -4,7 +4,7 @@ import { getAdminDashboardStats } from "@/lib/admin-data";
 
 export default async function AdminReportsPage() {
   await requireAdminSession("reports.view");
-  const stats = getAdminDashboardStats();
+  const stats = await getAdminDashboardStats();
 
   return (
     <AdminPageFrame title="Reports" subtitle="Operational metrics and service overview">

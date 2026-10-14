@@ -14,8 +14,9 @@ export function ContactForm() {
   const [topic, setTopic] = useState("service");
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!name || !email || !message) {
       setError("Name, email, and message are required.");
@@ -26,7 +27,24 @@ export function ContactForm() {
       return;
     }
     setError("");
-    setDone(true);
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, email, phone, topic, message }),
+      });
+      const data = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) {
+        setError(data.error ?? "Your message could not be sent. Please try again.");
+        return;
+      }
+      setDone(true);
+    } catch {
+      setError("Could not reach the server. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (done) {
@@ -61,7 +79,7 @@ export function ContactForm() {
       />
       <Field label="Message" name="message" as="textarea" required value={message} onChange={setMessage} />
       {error ? <p className="text-sm text-accent">{error}</p> : null}
-      <Button type="submit">Send message</Button>
+      <Button type="submit" disabled={submitting}>{submitting ? "Sending…" : "Send message"}</Button>
     </form>
   );
 }

@@ -4,6 +4,9 @@ import { getAdminSession, getRoleLabel } from "@/lib/admin-auth";
 
 const navItems = [
   { label: "Dashboard", href: "/admin/dashboard" },
+  { label: "Assistant", href: "/admin/assistant" },
+  { label: "Approvals", href: "/admin/approvals" },
+  { label: "Audit Log", href: "/admin/audit" },
   { label: "Appointments", href: "/admin/appointments" },
   { label: "Customers", href: "/admin/customers" },
   { label: "Chats", href: "/admin/chats" },
