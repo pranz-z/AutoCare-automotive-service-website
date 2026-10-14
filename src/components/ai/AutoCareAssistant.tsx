@@ -31,7 +31,11 @@ type PendingAction = {
   summary: string;
   expiresAt: string;
   token: string;
+  /** Auto-staged revert — renders as "Undo" instead of "Confirm". */
+  undo?: boolean;
 };
+
+type QuickReply = { label: string; message: string };
 
 const TOOL_STEP_LABELS: Record<string, string> = {
   check_availability: "Checking availability",
@@ -51,13 +55,26 @@ const TOOL_STEP_LABELS: Record<string, string> = {
   get_dashboard_summary: "Getting dashboard summary",
   list_agent_actions: "Listing audit log",
   create_booking: "Preparing booking",
-  reschedule_booking: "Preparing reschedule",
-  cancel_booking: "Preparing cancellation",
   create_quote_request: "Preparing quote request",
   create_inquiry: "Preparing inquiry",
-  update_inquiry_status: "Preparing inquiry update",
-  update_appointment_status: "Preparing appointment update",
+  set_inquiry_status: "Updating inquiry status",
+  set_inquiry_priority: "Updating inquiry priority",
+  approve_draft_reply: "Preparing draft approval",
+  convert_inquiry_to_appointment: "Converting to booking",
+  confirm_appointment: "Confirming appointment",
+  mark_in_service: "Marking in service",
+  complete_appointment: "Completing appointment",
+  cancel_appointment: "Preparing cancellation",
+  reschedule_appointment: "Preparing reschedule",
   reset_demo_data: "Resetting demo data",
+};
+
+/** /admin/<list> path segment → the record type the drawer can open. */
+const ADMIN_OPEN_TYPES: Record<string, "appointment" | "inquiry" | "customer" | "chat"> = {
+  appointments: "appointment",
+  inquiries: "inquiry",
+  customers: "customer",
+  chats: "chat",
 };
 
 const toolLabel = (name: string) =>
@@ -105,6 +122,7 @@ export function AutoCareAssistant({
   const [isLoading, setIsLoading] = useState(false);
   const [toolResults, setToolResults] = useState<ToolResult[] | null>(null);
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -169,6 +187,12 @@ export function AutoCareAssistant({
     setToolResults(null);
 
     try {
+      // The open record drawer is a hint only — the server re-resolves it.
+      const openId = new URLSearchParams(window.location.search).get("open") ?? undefined;
+      const openSegment = /^\/admin\/(appointments|inquiries|customers|chats)/.exec(window.location.pathname)?.[1];
+      const openRecord =
+        mode === "admin" && openId && openSegment ? { type: ADMIN_OPEN_TYPES[openSegment], id: openId } : undefined;
+
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -176,6 +200,7 @@ export function AutoCareAssistant({
           message: trimmed,
           conversationId,
           history: messages.filter((item) => item.id !== "welcome").slice(-4).map(({ role, content }) => ({ role, content })),
+          ...(openRecord ? { openRecord } : {}),
         }),
       });
 
@@ -206,6 +231,7 @@ export function AutoCareAssistant({
         if (Array.isArray(data?.pendingActions)) {
           setPendingActions(data.pendingActions);
         }
+        setQuickReplies(Array.isArray(data?.quickReplies) ? data.quickReplies : []);
       } else {
         appendMessage({
           role: "assistant",
@@ -427,7 +453,11 @@ export function AutoCareAssistant({
           {pendingActions.length > 0 && (
             <div className="mr-auto max-w-[85%] mb-4">
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2">
-                <p className="text-xs uppercase tracking-[0.1em] text-amber-800 mb-2">Awaiting confirmation</p>
+                <p className="text-xs uppercase tracking-[0.1em] text-amber-800 mb-2">
+                  {pendingActions.some((a) => a.undo) && pendingActions.every((a) => a.undo)
+                    ? "Applied — undo available"
+                    : "Awaiting confirmation"}
+                </p>
                 {pendingActions.map((action) => (
                   <div key={action.id} className="mb-2 rounded bg-surface p-2 text-xs">
                     <p className="font-medium">{action.summary}</p>
@@ -439,7 +469,7 @@ export function AutoCareAssistant({
                         disabled={isLoading}
                         className="rounded bg-green-600 px-3 py-1 text-white hover:bg-green-700 disabled:opacity-50"
                       >
-                        Confirm
+                        {action.undo ? "Undo" : "Confirm"}
                       </button>
                       <button
                         type="button"
@@ -447,12 +477,30 @@ export function AutoCareAssistant({
                         disabled={isLoading}
                         className="rounded border border-line px-3 py-1 text-muted hover:bg-muted disabled:opacity-50"
                       >
-                        Cancel
+                        {action.undo ? "Keep" : "Cancel"}
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {quickReplies.length > 0 && !isLoading && (
+            <div className="mr-auto mb-3 flex max-w-[85%] flex-wrap gap-2">
+              {quickReplies.map((qr, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    setQuickReplies([]);
+                    void handleSubmit(qr.message);
+                  }}
+                  className="rounded-full border border-line bg-surface px-3 py-1 text-xs text-ink hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  {qr.label}
+                </button>
+              ))}
             </div>
           )}
 

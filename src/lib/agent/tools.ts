@@ -1,6 +1,7 @@
 import { getArticles, getFaqs, getLocations, getService, getServices } from "@/lib/content";
 import { currentTxDb, getDb } from "@/lib/db/client";
-import { createRepository, type Repository } from "@/lib/db/repository";
+import { createRepository, withTransaction, type Repository } from "@/lib/db/repository";
+import { APPOINTMENT_ACTIONS, INQUIRY_PRIORITIES } from "@/lib/admin/record-mutations";
 import { triageSubmission, type TriageResult } from "./triage";
 import {
   appointmentCard,
@@ -11,7 +12,7 @@ import {
   inquiryCard,
   fmtDate,
 } from "./cards";
-import type { AgentCard, AgentRole, AgentTool, JsonSchema, ToolResult } from "./types";
+import type { AgentCard, AgentContext, AgentRole, AgentTool, JsonSchema, ToolResult } from "./types";
 
 /**
  * Tool registry for the agent runtime. All data access goes through the
@@ -28,10 +29,15 @@ async function repo(): Promise<Repository> {
   return createRepository({ client: h.client, db: currentTxDb() ?? h.db, url: h.url });
 }
 
-const ok = <T>(data: T, cards?: AgentCard[]): ToolResult<T> => ({
+const ok = <T>(
+  data: T,
+  cards?: AgentCard[],
+  quickReplies?: { label: string; message: string }[],
+): ToolResult<T> => ({
   success: true,
   data,
   ...(cards?.length ? { cards } : {}),
+  ...(quickReplies?.length ? { quickReplies } : {}),
 });
 const fail = (error: string): ToolResult => ({ success: false, error });
 
@@ -53,34 +59,301 @@ const s = (description: string, extra: Partial<JsonSchema> = {}): JsonSchema => 
   ...extra,
 });
 
-/** Shared reschedule validation + mutation for booking/reschedule tools. */
-async function validateReschedule(input: Record<string, unknown>): Promise<ToolResult> {
-  const date = str(input.date);
-  const time = str(input.time);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Invalid date format (use YYYY-MM-DD)");
-  if (!/^\d{2}:\d{2}$/.test(time)) return fail("Invalid time format (use HH:MM)");
-  const appointment = await (await repo()).getAppointmentByReference(str(input.reference).trim().toUpperCase());
-  if (!appointment) return fail("Booking not found");
-  if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
-    return fail(`Cannot reschedule a ${appointment.status} booking`);
+// ---------- staff record-op helpers ----------
+
+type InquiryRow = Awaited<ReturnType<Repository["listInquiriesDetailed"]>>[number];
+type AppointmentRow = Awaited<ReturnType<Repository["listAppointmentsDetailed"]>>[number];
+
+/** Bulk edit ceiling — one confirm card never covers more records than this. */
+export const BULK_CAP = 20;
+
+/** Words that mean "the record I have open" — resolved server-side, never guessed. */
+const OPEN_WORDS = /^(this|current|open|it|that|the open)\b/i;
+
+/**
+ * Resolves a tool's record identifier. A bare/"this"-style value resolves to
+ * the server-verified open record (type must match); a concrete value is used
+ * as an internal id or display reference.
+ */
+function targetId(
+  ctx: AgentContext,
+  raw: unknown,
+  kind: "appointment" | "inquiry",
+): { id?: string; error?: string } {
+  const v = str(raw).trim();
+  if (!v || OPEN_WORDS.test(v)) {
+    if (ctx.openRecord?.type === kind) return { id: ctx.openRecord.id };
+    return {
+      error: `Which ${kind}? Give its ID or reference — or open the record drawer and ask about "this ${kind}".`,
+    };
   }
-  const taken = await (await repo()).countBooked(appointment.branchId, date, time, appointment.id);
-  if (taken >= 2) return fail(`Slot ${date} ${time} is fully booked at that branch`);
-  return ok({ currentDate: appointment.date, currentTime: appointment.time, requested: `${date} ${time}` });
+  return { id: v };
 }
 
-async function applyReschedule(input: Record<string, unknown>): Promise<ToolResult> {
-  const date = str(input.date);
-  const time = str(input.time);
-  const appointment = await (await repo()).getAppointmentByReference(str(input.reference).trim().toUpperCase());
-  if (!appointment) return fail("Booking not found");
-  if (["completed", "cancelled", "no_show"].includes(appointment.status)) {
-    return fail(`Cannot reschedule a ${appointment.status} booking`);
+async function findInquiry(id: string): Promise<InquiryRow | undefined> {
+  const rows = await (await repo()).listInquiriesDetailed();
+  return rows.find((i) => i.id === id || i.reference === id.toUpperCase() || i.reference === id);
+}
+
+async function findAppointment(id: string): Promise<AppointmentRow | undefined> {
+  const rows = await (await repo()).listAppointmentsDetailed();
+  const up = id.toUpperCase();
+  return rows.find((a) => a.id === id || a.reference === up || a.reference === id);
+}
+
+/** Per-record audit detail written inside the mutation's transaction. */
+async function auditTool(
+  r: Repository,
+  ctx: AgentContext,
+  toolName: string,
+  input: unknown,
+  output: unknown,
+) {
+  await r.logAgentAction({
+    sessionId: ctx.sessionId,
+    actorType: ctx.actor ? `${ctx.role}:${ctx.actor}` : ctx.role,
+    toolName: `agent:${toolName}`,
+    input,
+    output,
+    success: true,
+  });
+}
+
+/**
+ * Resolves the set of inquiries an operation targets: explicit id(s) — where a
+ * lone "this"-style word resolves via the open record — unioned with an
+ * optional status filter. Fails on any unmatched id (never skips silently)
+ * and refuses sets over BULK_CAP.
+ */
+async function resolveInquiryTargets(
+  ctx: AgentContext,
+  input: Record<string, unknown>,
+): Promise<{ rows: InquiryRow[] } | { error: string }> {
+  const all = await (await repo()).listInquiriesDetailed();
+  const wanted = new Map<string, InquiryRow>();
+  const missing: string[] = [];
+
+  let ids = [
+    ...(input.id !== undefined ? [input.id] : []),
+    ...(Array.isArray(input.ids) ? input.ids : []),
+  ]
+    .map((v) => str(v).trim())
+    .filter(Boolean);
+  if (ids.length === 1 && OPEN_WORDS.test(ids[0])) {
+    if (ctx.openRecord?.type === "inquiry") ids = [ctx.openRecord.id];
+    else {
+      return {
+        error: `Which inquiry? Give its ID or reference — or open the record drawer and say "this inquiry".`,
+      };
+    }
   }
-  const taken = await (await repo()).countBooked(appointment.branchId, date, time, appointment.id);
-  if (taken >= 2) return fail(`Slot ${date} ${time} is now fully booked`);
-  const updated = await (await repo()).updateAppointmentSchedule(appointment.id, date, time);
-  return ok({ reference: appointment.reference, date: updated?.date, time: updated?.time });
+  for (const v of ids) {
+    const row = all.find((i) => i.id === v || i.reference === v || i.reference === v.toUpperCase());
+    if (row) wanted.set(row.id, row);
+    else missing.push(v);
+  }
+  const where = str(input.whereStatus);
+  if (where) for (const row of all.filter((i) => i.status === where)) wanted.set(row.id, row);
+
+  if (missing.length) {
+    return { error: `No inquiry matches: ${[...new Set(missing)].join(", ")}` };
+  }
+  const rows = [...wanted.values()];
+  if (!rows.length) {
+    return { error: "No inquiries matched — pass an id, an ids list, or a whereStatus filter." };
+  }
+  if (rows.length > BULK_CAP) {
+    return {
+      error: `${rows.length} inquiries match — the limit is ${BULK_CAP} per action. Narrow the filter or pass explicit IDs.`,
+    };
+  }
+  return { rows };
+}
+
+/** One-line list of references for summaries/previews, truncated for bulk. */
+function refList(refs: string[]): string {
+  return refs.length > 8 ? `${refs.slice(0, 8).join(", ")} +${refs.length - 8} more` : refs.join(", ");
+}
+
+/** Shared preview+apply for the reversible appointment status flips. */
+function appointmentTransition(action: "confirm" | "in_service" | "complete") {
+  const t = APPOINTMENT_ACTIONS[action];
+  const label = action === "in_service" ? "mark in service" : action;
+  return {
+    async execute(ctx: AgentContext, input: Record<string, unknown>): Promise<ToolResult> {
+      const t0 = targetId(ctx, input.id, "appointment");
+      if (t0.error) return fail(t0.error);
+      const row = await findAppointment(t0.id!);
+      if (!row) return fail("Appointment not found");
+      if (!(t.from as readonly string[]).includes(row.status)) {
+        return fail(`Cannot ${label} an appointment that is "${row.status}".`);
+      }
+      return ok({
+        reference: row.reference,
+        currentStatus: row.status,
+        restores: [{ id: row.id, reference: row.reference, status: row.status }],
+      });
+    },
+    async apply(ctx: AgentContext, input: Record<string, unknown>): Promise<ToolResult> {
+      const t0 = targetId(ctx, input.id, "appointment");
+      if (t0.error) return fail(t0.error);
+      const row = await findAppointment(t0.id!);
+      if (!row) return fail("Appointment not found");
+      if (!(t.from as readonly string[]).includes(row.status)) {
+        return fail(`Cannot ${label} an appointment that is "${row.status}".`);
+      }
+      const r = await repo();
+      await withTransaction(r, async (tx) => {
+        await tx.updateAppointmentStatus(row.id, t.to);
+        await auditTool(
+          tx, ctx, `appointment.${action}`,
+          { appointment: row.reference, from: row.status, to: t.to },
+          { reference: row.reference, status: t.to },
+        );
+      });
+      return ok(
+        { reference: row.reference, status: t.to, previousStatus: row.status },
+        [appointmentCard({ ...row, status: t.to }, true)],
+      );
+    },
+    undo(_input: Record<string, unknown>, preview: unknown) {
+      const restores = (preview as { restores?: { id: string; reference: string; status: string }[] } | undefined)?.restores;
+      if (!restores?.length) return undefined;
+      const r0 = restores[0];
+      return {
+        tool: "revert_appointment_status",
+        args: { restores: restores.map(({ id, status }) => ({ id, status })) },
+        summary: `Undo: restore ${r0.reference} to "${r0.status}"`,
+      };
+    },
+  };
+}
+
+/** Shared preview+apply for a bulk-capable inquiry field update. */
+function inquiryBulkUpdate(opts: {
+  toolName: string;
+  field: "status" | "priority";
+  describe: (value: string, count: number, refs: string[]) => string;
+  undoTool: string;
+  write: (tx: Repository, id: string, value: string) => Promise<unknown>;
+}) {
+  const valueKey = opts.field;
+  const blockedReason = (row: InquiryRow, value: string): string | undefined => {
+    if (row.status === "closed") return `"${row.reference}" is closed`;
+    if (valueKey === "status" && row.status === value) return `"${row.reference}" is already "${value}"`;
+    if (valueKey === "priority" && row.priority === value) return `"${row.reference}" is already "${value}"`;
+    return undefined;
+  };
+  return {
+    async execute(ctx: AgentContext, input: Record<string, unknown>): Promise<ToolResult> {
+      const targets = await resolveInquiryTargets(ctx, input);
+      if ("error" in targets) return fail(targets.error);
+      const value = str(input[valueKey]);
+      const blocked = targets.rows.map((i) => blockedReason(i, value)).filter(Boolean);
+      if (blocked.length) return fail(`Skipped nothing — fix these first: ${blocked.join(", ")}`);
+      const refs = targets.rows.map((i) => i.reference);
+      // Multi-record sets and any status-filter sweep always confirm — even a
+      // 1-row whereStatus match was bulk intent.
+      const bulk = targets.rows.length > 1 || Boolean(str(input.whereStatus));
+      return ok({
+        count: targets.rows.length,
+        requiresConfirm: bulk,
+        summary: opts.describe(value, refs.length, refs),
+        references: refs,
+        restores: targets.rows.map((i) => ({ id: i.id, reference: i.reference, [valueKey]: i[valueKey] })),
+      });
+    },
+    async apply(ctx: AgentContext, input: Record<string, unknown>): Promise<ToolResult> {
+      const targets = await resolveInquiryTargets(ctx, input);
+      if ("error" in targets) return fail(targets.error);
+      const value = str(input[valueKey]);
+      const blocked = targets.rows.map((i) => blockedReason(i, value)).filter(Boolean);
+      if (blocked.length) return fail(`Nothing applied — blocked: ${blocked.join(", ")}`);
+      const r = await repo();
+      await withTransaction(r, async (tx) => {
+        for (const i of targets.rows) await opts.write(tx, i.id, value);
+        await auditTool(
+          tx, ctx, opts.toolName,
+          { references: targets.rows.map((i) => i.reference), [valueKey]: value },
+          { applied: targets.rows.length },
+        );
+      });
+      return ok({ applied: targets.rows.length, references: targets.rows.map((i) => i.reference), [valueKey]: value });
+    },
+    undo(_input: Record<string, unknown>, preview: unknown) {
+      const restores = (preview as { restores?: { id: string; reference: string }[] } | undefined)?.restores;
+      if (!restores?.length) return undefined;
+      return {
+        tool: opts.undoTool,
+        args: { restores: restores.map((r) => ({ id: r.id, [valueKey]: (r as Record<string, string>)[valueKey] })) },
+        summary: `Undo: restore ${refList(restores.map((r) => r.reference))} to previous ${opts.field}`,
+      };
+    },
+  };
+}
+
+const setInquiryStatus = inquiryBulkUpdate({
+  toolName: "set_inquiry_status",
+  field: "status",
+  describe: (value, count, refs) =>
+    count > 1 ? `Set ${count} inquiries to "${value}": ${refList(refs)}` : `Set inquiry ${refs[0]} to "${value}"`,
+  undoTool: "revert_inquiry_status",
+  write: (tx, id, value) => tx.updateInquiryStatus(id, value),
+});
+
+const setInquiryPriority = inquiryBulkUpdate({
+  toolName: "set_inquiry_priority",
+  field: "priority",
+  describe: (value, count, refs) =>
+    count > 1 ? `Set ${count} inquiries to "${value}" priority: ${refList(refs)}` : `Set inquiry ${refs[0]} to "${value}" priority`,
+  undoTool: "revert_inquiry_priority",
+  write: (tx, id, value) => tx.updateInquiryPriority(id, value),
+});
+
+/** Hidden revert tools — applied only through an Undo pending action. */
+function revertTool(opts: {
+  name: string;
+  field: "status" | "priority";
+  list: () => Promise<(InquiryRow | AppointmentRow)[]>;
+  write: (tx: Repository, id: string, value: string) => Promise<unknown>;
+}) {
+  const parse = (input: Record<string, unknown>): { id: string; value: string }[] =>
+    (Array.isArray(input.restores) ? input.restores : [])
+      .map((r) => {
+        const rec = r as Record<string, unknown>;
+        return { id: str(rec.id), value: str(rec[opts.field] ?? rec.value) };
+      })
+      .filter((r) => r.id && r.value);
+  return {
+    name: opts.name,
+    description: "Internal revert tool — runs only via an Undo confirmation",
+    inputSchema: object({ restores: { type: "array", items: s("record restore entry") } }, ["restores"]),
+    tier: "write" as const,
+    hidden: true,
+    roles: STAFF,
+    summarize: () => "Restore previous values",
+    async execute(_ctx: AgentContext, input: Record<string, unknown>): Promise<ToolResult> {
+      const restores = parse(input);
+      if (!restores.length) return fail("Nothing to restore");
+      const rows = await opts.list();
+      const missing = restores.filter((r) => !rows.some((row) => row.id === r.id)).map((r) => r.id);
+      if (missing.length) return fail(`Records no longer exist: ${missing.join(", ")}`);
+      return ok({ count: restores.length });
+    },
+    async apply(ctx: AgentContext, input: Record<string, unknown>): Promise<ToolResult> {
+      const restores = parse(input);
+      if (!restores.length) return fail("Nothing to restore");
+      const rows = await opts.list();
+      const missing = restores.filter((r) => !rows.some((row) => row.id === r.id)).map((r) => r.id);
+      if (missing.length) return fail(`Nothing restored — missing records: ${missing.join(", ")}`);
+      const r = await repo();
+      await withTransaction(r, async (tx) => {
+        for (const rest of restores) await opts.write(tx, rest.id, rest.value);
+        await auditTool(tx, ctx, opts.name, { restores }, { restored: restores.length });
+      });
+      return ok({ restored: restores.length });
+    },
+  } satisfies AgentTool;
 }
 
 export const agentTools: AgentTool[] = [
@@ -147,7 +420,7 @@ export const agentTools: AgentTool[] = [
     }),
     tier: "read",
     roles: EVERYONE,
-    async execute(_ctx, input) {
+    async execute(ctx, input) {
       const branchId = str(input.branchId);
       const serviceId = str(input.serviceId);
       const date = str(input.date);
@@ -170,11 +443,22 @@ export const agentTools: AgentTool[] = [
           .flatMap((d) => d.slots.map((slot) => ({ date: d.date, ...slot })))
           .slice(0, 14),
       }));
+      // Staff get tappable slot chips so a missing date/time is one tap, not a retype.
+      const slotChips = STAFF.includes(ctx.role)
+        ? branches
+            .flatMap((b) => b.slots.filter((sl) => sl.available).map((sl) => ({ ...sl, branch: b.branch.name })))
+            .slice(0, 3)
+            .map((sl) => ({
+              label: `${fmtDate(sl.date)} · ${sl.time} — ${sl.branch}`,
+              message: `Use the ${sl.date} ${sl.time} slot at ${sl.branch}`,
+            }))
+        : undefined;
       return ok(
         { branches, note: "Availability is computed from current bookings (2 slots per time)." },
         branches
           .map((entry) => availabilityCard(entry))
           .filter((c): c is AgentCard => c !== null),
+        slotChips,
       );
     },
   },
@@ -480,61 +764,306 @@ export const agentTools: AgentTool[] = [
     },
   },
 
-  // ---------- write tools (pending confirmation, never direct) ----------
+  // ---------- staff record ops ----------
+  // Direct tier: low-risk flips execute immediately and auto-stage an Undo.
+  // ids[]/whereStatus (bulk) or any customer-touching change stays confirm-gated.
   {
-    name: "update_inquiry_status",
-    description: "Update the status of an inquiry (requires staff confirmation)",
+    name: "set_inquiry_status",
+    description:
+      "Set inquiry status to new/contacted/resolved. Pass one id (or 'this' for the open record), ids[] for a named list, or whereStatus to target every inquiry in a status. Single changes apply immediately with an Undo option; multi-record changes stage one confirmation listing every record.",
     inputSchema: object(
       {
-        id: s("Inquiry ID or reference"),
-        status: s("New status", { enum: ["new", "reviewed", "responded", "resolved", "closed"] }),
+        id: s("Inquiry ID or reference — or 'this' for the open record"),
+        ids: { type: "array", items: s("Inquiry ID or reference") },
+        whereStatus: s("Target every inquiry currently in this status", {
+          enum: ["new", "contacted", "reviewed", "responded", "resolved", "closed"],
+        }),
+        status: s("New status", { enum: ["new", "contacted", "resolved"] }),
       },
-      ["id", "status"],
+      ["status"],
     ),
+    tier: "direct",
+    roles: STAFF,
+    ...setInquiryStatus,
+  },
+  {
+    name: "set_inquiry_priority",
+    description:
+      "Set inquiry priority (low/normal/medium/high/urgent). Same targeting as set_inquiry_status — 'this', ids[], or whereStatus; single applies with Undo, multi stages one confirmation.",
+    inputSchema: object(
+      {
+        id: s("Inquiry ID or reference — or 'this' for the open record"),
+        ids: { type: "array", items: s("Inquiry ID or reference") },
+        whereStatus: s("Target every inquiry currently in this status", {
+          enum: ["new", "contacted", "reviewed", "responded", "resolved", "closed"],
+        }),
+        priority: s("New priority", { enum: [...INQUIRY_PRIORITIES] }),
+      },
+      ["priority"],
+    ),
+    tier: "direct",
+    roles: STAFF,
+    ...setInquiryPriority,
+  },
+  {
+    name: "approve_draft_reply",
+    description:
+      "Approve the stored AI draft reply on an inquiry — stamps approval only, sends nothing. Requires confirmation.",
+    inputSchema: object({ id: s("Inquiry ID or reference — or 'this' for the open record") }, ["id"]),
     tier: "write",
     roles: STAFF,
-    summarize: (input) => `Set inquiry ${str(input.id)} status to "${str(input.status)}"`,
+    summarize: (input) => `Approve the draft reply on inquiry ${str(input.id)}`,
     async execute(ctx, input) {
-      const rows = await (await repo()).listInquiriesDetailed();
-      const inquiry = rows.find((i) => i.id === str(input.id) || i.reference === str(input.id));
-      if (!inquiry) return fail("Inquiry not found");
-      return ok({ inquiryReference: inquiry.reference, currentStatus: inquiry.status });
+      const t = targetId(ctx, input.id, "inquiry");
+      if (t.error) return fail(t.error);
+      const row = await findInquiry(t.id!);
+      if (!row) return fail("Inquiry not found");
+      let triage: { draftReply?: string; draftApprovedAt?: string } = {};
+      try { triage = row.triage ? (JSON.parse(row.triage) as typeof triage) : {}; } catch { /* malformed */ }
+      if (!triage.draftReply) return fail("No draft reply stored on this inquiry");
+      if (triage.draftApprovedAt) return fail("Draft reply was already approved");
+      return ok({ reference: row.reference, draftPreview: triage.draftReply.slice(0, 160) });
     },
-    async apply(_ctx, input) {
-      const rows = await (await repo()).listInquiriesDetailed();
-      const inquiry = rows.find((i) => i.id === str(input.id) || i.reference === str(input.id));
-      if (!inquiry) return fail("Inquiry not found");
-      const updated = await (await repo()).updateInquiryStatus(inquiry.id, str(input.status));
-      return ok({ reference: inquiry.reference, status: updated?.status });
+    async apply(ctx, input) {
+      const t = targetId(ctx, input.id, "inquiry");
+      if (t.error) return fail(t.error);
+      const row = await findInquiry(t.id!);
+      if (!row) return fail("Inquiry not found");
+      let triage: { draftReply?: string; draftApprovedAt?: string } = {};
+      try { triage = row.triage ? (JSON.parse(row.triage) as typeof triage) : {}; } catch { /* malformed */ }
+      if (!triage.draftReply) return fail("No draft reply stored on this inquiry");
+      if (triage.draftApprovedAt) return fail("Draft reply was already approved");
+      triage.draftApprovedAt = new Date().toISOString();
+      const r = await repo();
+      await withTransaction(r, async (tx) => {
+        await tx.setInquiryTriage(row.id, JSON.stringify(triage));
+        await auditTool(tx, ctx, "approve_draft_reply", { inquiry: row.reference }, { approved: true });
+      });
+      return ok({ reference: row.reference, approved: true }, [inquiryCard(row, true)]);
     },
   },
   {
-    name: "update_appointment_status",
-    description: "Update the status of an appointment (requires staff confirmation)",
+    name: "convert_inquiry_to_appointment",
+    description:
+      "Convert an inquiry into a booking: needs serviceId, branchId, date, time. Checks slot availability first and requires confirmation.",
     inputSchema: object(
       {
-        id: s("Appointment ID or reference"),
-        status: s("New status", { enum: ["pending", "confirmed", "in_service", "completed", "cancelled", "no_show"] }),
+        id: s("Inquiry ID or reference — or 'this' for the open record"),
+        serviceId: s("Service ID"),
+        branchId: s("Branch ID"),
+        date: s("Date (YYYY-MM-DD)"),
+        time: s("Time (HH:MM, 24h)"),
       },
-      ["id", "status"],
+      ["id", "serviceId", "branchId", "date", "time"],
     ),
     tier: "write",
     roles: STAFF,
-    summarize: (input) => `Set appointment ${str(input.id)} status to "${str(input.status)}"`,
-    async execute(_ctx, input) {
-      const rows = await (await repo()).listAppointmentsDetailed();
-      const appointment = rows.find((a) => a.id === str(input.id) || a.reference === str(input.id));
-      if (!appointment) return fail("Appointment not found");
-      return ok({ appointmentReference: appointment.reference, currentStatus: appointment.status });
+    summarize: (input) =>
+      `Convert inquiry ${str(input.id)} into a ${str(input.serviceId)} booking at ${str(input.branchId)} on ${str(input.date)} ${str(input.time)}`,
+    async execute(ctx, input) {
+      const t = targetId(ctx, input.id, "inquiry");
+      if (t.error) return fail(t.error);
+      const row = await findInquiry(t.id!);
+      if (!row) return fail("Inquiry not found");
+      if (row.status === "closed" || row.status === "resolved") {
+        return fail(`Cannot convert an inquiry that is "${row.status}".`);
+      }
+      if (!getService(str(input.serviceId))) return fail("Service not found");
+      const branch = await (await repo()).getBranch(str(input.branchId));
+      if (!branch) return fail("Branch not found");
+      const date = str(input.date);
+      const time = str(input.time);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Invalid date format (use YYYY-MM-DD)");
+      if (!/^\d{2}:\d{2}$/.test(time)) return fail("Invalid time format (use HH:MM)");
+      const taken = await (await repo()).countBooked(branch.id, date, time);
+      if (taken >= 2) return fail(`Slot ${date} ${time} is fully booked at ${branch.name} — pick another`);
+      return ok({ reference: row.reference, service: getService(str(input.serviceId))!.name, branch: branch.name });
     },
-    async apply(_ctx, input) {
-      const rows = await (await repo()).listAppointmentsDetailed();
-      const appointment = rows.find((a) => a.id === str(input.id) || a.reference === str(input.id));
-      if (!appointment) return fail("Appointment not found");
-      const updated = await (await repo()).updateAppointmentStatus(appointment.id, str(input.status));
-      return ok({ reference: appointment.reference, status: updated?.status });
+    async apply(ctx, input) {
+      const t = targetId(ctx, input.id, "inquiry");
+      if (t.error) return fail(t.error);
+      const row = await findInquiry(t.id!);
+      if (!row) return fail("Inquiry not found");
+      if (row.status === "closed" || row.status === "resolved") {
+        return fail(`Cannot convert an inquiry that is "${row.status}".`);
+      }
+      const branch = await (await repo()).getBranch(str(input.branchId));
+      if (!branch) return fail("Branch not found");
+      const taken = await (await repo()).countBooked(branch.id, str(input.date), str(input.time));
+      if (taken >= 2) return fail(`Slot ${str(input.date)} ${str(input.time)} is now fully booked`);
+      const r = await repo();
+      const appt = await withTransaction(r, async (tx) => {
+        const created = await tx.createAppointment({
+          customer: {
+            name: row.customerName,
+            email: row.customerEmail || "unknown@example.invalid",
+            phone: row.customerPhone || "n/a",
+          },
+          vehicleInfo: row.vehicle,
+          serviceId: str(input.serviceId),
+          branchId: branch.id,
+          date: str(input.date),
+          time: str(input.time),
+          notes: `Converted from inquiry ${row.reference}: ${row.subject}`,
+        });
+        await tx.updateInquiryStatus(row.id, "resolved");
+        await auditTool(
+          tx, ctx, "convert_inquiry_to_appointment",
+          { inquiry: row.reference, serviceId: input.serviceId, branchId: branch.id, date: input.date, time: input.time },
+          { appointment: created.reference, inquiryResolved: row.reference },
+        );
+        return created;
+      });
+      return ok({ appointment: appt.reference, inquiry: row.reference, status: "resolved" }, [appointmentCard({ ...appt, branchName: branch.name }, true)]);
     },
   },
+  {
+    name: "confirm_appointment",
+    description: "Confirm a pending or rescheduled appointment — applies immediately with an Undo option.",
+    inputSchema: object({ id: s("Appointment ID or reference — or 'this' for the open record") }, ["id"]),
+    tier: "direct",
+    roles: STAFF,
+    ...appointmentTransition("confirm"),
+  },
+  {
+    name: "mark_in_service",
+    description: "Mark a pending/confirmed appointment as in service — applies immediately with an Undo option.",
+    inputSchema: object({ id: s("Appointment ID or reference — or 'this' for the open record") }, ["id"]),
+    tier: "direct",
+    roles: STAFF,
+    ...appointmentTransition("in_service"),
+  },
+  {
+    name: "complete_appointment",
+    description: "Mark an in-service appointment completed — applies immediately with an Undo option.",
+    inputSchema: object({ id: s("Appointment ID or reference — or 'this' for the open record") }, ["id"]),
+    tier: "direct",
+    roles: STAFF,
+    ...appointmentTransition("complete"),
+  },
+  {
+    name: "cancel_appointment",
+    description: "Cancel an appointment — requires confirmation.",
+    inputSchema: object(
+      {
+        id: s("Appointment ID or reference — or 'this' for the open record"),
+        reason: s("Cancellation reason", { maxLength: 200 }),
+      },
+      ["id"],
+    ),
+    tier: "write",
+    roles: STAFF,
+    summarize: (input) => `Cancel appointment ${str(input.id)}`,
+    async execute(ctx, input) {
+      const t = targetId(ctx, input.id, "appointment");
+      if (t.error) return fail(t.error);
+      const row = await findAppointment(t.id!);
+      if (!row) return fail("Appointment not found");
+      const tdef = APPOINTMENT_ACTIONS.cancel;
+      if (!(tdef.from as readonly string[]).includes(row.status)) {
+        return fail(`Cannot cancel an appointment that is "${row.status}".`);
+      }
+      return ok({ reference: row.reference, currentStatus: row.status, date: row.date, time: row.time });
+    },
+    async apply(ctx, input) {
+      const t = targetId(ctx, input.id, "appointment");
+      if (t.error) return fail(t.error);
+      const row = await findAppointment(t.id!);
+      if (!row) return fail("Appointment not found");
+      const tdef = APPOINTMENT_ACTIONS.cancel;
+      if (!(tdef.from as readonly string[]).includes(row.status)) {
+        return fail(`Cannot cancel an appointment that is "${row.status}".`);
+      }
+      const r = await repo();
+      await withTransaction(r, async (tx) => {
+        await tx.updateAppointmentStatus(row.id, "cancelled");
+        await auditTool(
+          tx, ctx, "cancel_appointment",
+          { appointment: row.reference, from: row.status, reason: str(input.reason) },
+          { reference: row.reference, status: "cancelled" },
+        );
+      });
+      return ok({ reference: row.reference, status: "cancelled" }, [appointmentCard({ ...row, status: "cancelled" }, true)]);
+    },
+  },
+  {
+    name: "reschedule_appointment",
+    description: "Move an appointment to a new date/time — checks availability, requires confirmation.",
+    inputSchema: object(
+      {
+        id: s("Appointment ID or reference — or 'this' for the open record"),
+        date: s("New date (YYYY-MM-DD)"),
+        time: s("New time (HH:MM, 24h)"),
+        reason: s("Reason", { maxLength: 200 }),
+      },
+      ["id", "date", "time"],
+    ),
+    tier: "write",
+    roles: STAFF,
+    summarize: (input) => `Reschedule ${str(input.id)} to ${str(input.date)} ${str(input.time)}`,
+    async execute(ctx, input) {
+      const t = targetId(ctx, input.id, "appointment");
+      if (t.error) return fail(t.error);
+      const row = await findAppointment(t.id!);
+      if (!row) return fail("Appointment not found");
+      const tdef = APPOINTMENT_ACTIONS.reschedule;
+      if (!(tdef.from as readonly string[]).includes(row.status)) {
+        return fail(`Cannot reschedule an appointment that is "${row.status}".`);
+      }
+      const date = str(input.date);
+      const time = str(input.time);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Invalid date format (use YYYY-MM-DD)");
+      if (!/^\d{2}:\d{2}$/.test(time)) return fail("Invalid time format (use HH:MM)");
+      const taken = await (await repo()).countBooked(row.branchId, date, time, row.id);
+      if (taken >= 2) return fail(`Slot ${date} ${time} is fully booked at that branch — pick another`);
+      return ok({ reference: row.reference, current: `${row.date} ${row.time}`, requested: `${date} ${time}` });
+    },
+    async apply(ctx, input) {
+      const t = targetId(ctx, input.id, "appointment");
+      if (t.error) return fail(t.error);
+      const row = await findAppointment(t.id!);
+      if (!row) return fail("Appointment not found");
+      const tdef = APPOINTMENT_ACTIONS.reschedule;
+      if (!(tdef.from as readonly string[]).includes(row.status)) {
+        return fail(`Cannot reschedule an appointment that is "${row.status}".`);
+      }
+      const date = str(input.date);
+      const time = str(input.time);
+      const taken = await (await repo()).countBooked(row.branchId, date, time, row.id);
+      if (taken >= 2) return fail(`Slot ${date} ${time} is now fully booked`);
+      const r = await repo();
+      await withTransaction(r, async (tx) => {
+        await tx.updateAppointmentSchedule(row.id, date, time);
+        await tx.updateAppointmentStatus(row.id, tdef.to);
+        await auditTool(
+          tx, ctx, "reschedule_appointment",
+          { appointment: row.reference, from: row.status, date, time, reason: str(input.reason) },
+          { reference: row.reference, date, time, status: tdef.to },
+        );
+      });
+      const updated = { ...row, date, time, status: tdef.to };
+      return ok({ reference: row.reference, date, time, status: tdef.to }, [appointmentCard(updated, true)]);
+    },
+  },
+  // Hidden revert tools — reachable only through an Undo pending action.
+  revertTool({
+    name: "revert_inquiry_status",
+    field: "status",
+    list: () => repo().then((r) => r.listInquiriesDetailed()),
+    write: (tx, id, value) => tx.updateInquiryStatus(id, value),
+  }),
+  revertTool({
+    name: "revert_inquiry_priority",
+    field: "priority",
+    list: () => repo().then((r) => r.listInquiriesDetailed()),
+    write: (tx, id, value) => tx.updateInquiryPriority(id, value),
+  }),
+  revertTool({
+    name: "revert_appointment_status",
+    field: "status",
+    list: () => repo().then((r) => r.listAppointmentsDetailed()),
+    write: (tx, id, value) => tx.updateAppointmentStatus(id, value),
+  }),
   {
     name: "create_booking",
     description: "Create a booking on behalf of a customer (requires staff confirmation)",
@@ -577,53 +1106,7 @@ export const agentTools: AgentTool[] = [
       return ok({ reference: appointment.reference, status: appointment.status });
     },
   },
-  {
-    name: "reschedule_booking",
-    description: "Move a booking to a new date and time (requires staff confirmation)",
-    inputSchema: object(
-      {
-        reference: s("Booking reference (AC-YYYY-NNNNN)"),
-        date: s("New date (YYYY-MM-DD)"),
-        time: s("New time (HH:MM, 24h)"),
-      },
-      ["reference", "date", "time"],
-    ),
-    tier: "write",
-    roles: STAFF,
-    summarize: (input) => `Reschedule ${str(input.reference)} to ${str(input.date)} ${str(input.time)}`,
-    execute: (_ctx, input) => validateReschedule(input),
-    apply: (_ctx, input) => applyReschedule(input),
-  },
-  {
-    name: "cancel_booking",
-    description: "Cancel a booking (requires staff confirmation)",
-    inputSchema: object(
-      {
-        reference: s("Booking reference (AC-YYYY-NNNNN)"),
-        reason: s("Cancellation reason", { maxLength: 200 }),
-      },
-      ["reference"],
-    ),
-    tier: "write",
-    roles: STAFF,
-    summarize: (input) => `Cancel booking ${str(input.reference)}`,
-    async execute(_ctx, input) {
-      const appointment = await (await repo()).getAppointmentByReference(str(input.reference).trim().toUpperCase());
-      if (!appointment) return fail("Booking not found");
-      if (appointment.status === "cancelled") return fail("Booking is already cancelled");
-      if (["completed", "no_show"].includes(appointment.status)) {
-        return fail(`Cannot cancel a ${appointment.status} booking`);
-      }
-      return ok({ currentStatus: appointment.status, date: appointment.date, time: appointment.time });
-    },
-    async apply(_ctx, input) {
-      const appointment = await (await repo()).getAppointmentByReference(str(input.reference).trim().toUpperCase());
-      if (!appointment) return fail("Booking not found");
-      if (appointment.status === "cancelled") return fail("Booking is already cancelled");
-      const updated = await (await repo()).updateAppointmentStatus(appointment.id, "cancelled");
-      return ok({ reference: appointment.reference, status: updated?.status });
-    },
-  },
+
   {
     name: "create_quote_request",
     description: "Create a quote request on behalf of a customer (requires staff confirmation)",
@@ -853,26 +1336,6 @@ export const agentTools: AgentTool[] = [
       );
     },
   },
-  {
-    name: "propose_reschedule",
-    description: "Propose moving a booking to a new date/time — goes to the approvals queue for staff to approve or reject",
-    inputSchema: object(
-      {
-        reference: s("Booking reference (AC-YYYY-NNNNN)"),
-        date: s("Proposed date (YYYY-MM-DD)"),
-        time: s("Proposed time (HH:MM, 24h)"),
-        reason: s("Why the reschedule is proposed", { maxLength: 200 }),
-      },
-      ["reference", "date", "time"],
-    ),
-    tier: "write",
-    roles: STAFF,
-    summarize: (input) =>
-      `Reschedule ${str(input.reference)} to ${str(input.date)} ${str(input.time)}${str(input.reason) ? ` — ${str(input.reason)}` : ""}`,
-    execute: (_ctx, input) => validateReschedule(input),
-    apply: (_ctx, input) => applyReschedule(input),
-  },
-
   // ---------- admin tools ----------
   {
     name: "list_agent_actions",
@@ -913,7 +1376,8 @@ export function getTool(name: string): AgentTool | undefined {
 }
 
 export function getToolsForRole(role: AgentRole): AgentTool[] {
-  return agentTools.filter((t) => t.roles.includes(role));
+  // Hidden tools (revert targets) are apply-only — never declared to the model.
+  return agentTools.filter((t) => !t.hidden && t.roles.includes(role));
 }
 
 export function canCall(tool: AgentTool, role: AgentRole): boolean {

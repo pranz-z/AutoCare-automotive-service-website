@@ -41,7 +41,8 @@ export async function approvePendingAction(
   }
 
   const tool = getTool(pending.action);
-  if (!tool || tool.tier !== "write" || !tool.apply) {
+  // write tools stage directly; direct tools stage only via bulk inputs.
+  if (!tool || !tool.apply || (tool.tier !== "write" && tool.tier !== "direct")) {
     return { ok: false, status: 400, error: "Unknown or non-executable action." };
   }
   const role = session.role as AgentRole;

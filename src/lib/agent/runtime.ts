@@ -83,6 +83,7 @@ interface DispatchOutcome {
   /** Result payload fed back to the model as the function response. */
   forModel: unknown;
   pending?: PendingConfirmation;
+  quickReplies?: { label: string; message: string }[];
 }
 
 async function logCall(
@@ -119,6 +120,14 @@ async function dispatch(
     return { record: { name: call.name, input: call.args, success: false, error: output.error }, forModel: output };
   }
 
+  // Hidden tools are apply-only — they exist solely as Undo revert targets
+  // and must never be dispatched from a model call.
+  if (tool.hidden) {
+    const output: ToolResult = { success: false, error: `Unknown tool: ${call.name}` };
+    await logCall(repo, ctx, call.name, call.args, output, false);
+    return { record: { name: call.name, input: call.args, success: false, error: output.error }, forModel: output };
+  }
+
   if (!canCall(tool, ctx.role)) {
     const output: ToolResult = { success: false, error: `Tool ${tool.name} is not available for this role.` };
     await logCall(repo, ctx, tool.name, call.args, output, false);
@@ -134,7 +143,7 @@ async function dispatch(
 
   const input = (call.args ?? {}) as Record<string, unknown>;
 
-  if (tool.tier === "write") {
+  if (tool.tier === "write" || tool.tier === "direct") {
     const preview = await tool.execute(ctx, input).catch((e: unknown) => ({
       success: false,
       error: e instanceof Error ? e.message : "Validation failed",
@@ -143,26 +152,67 @@ async function dispatch(
       await logCall(repo, ctx, tool.name, input, preview, false);
       return { record: { name: tool.name, input, success: false, error: preview.error }, forModel: preview };
     }
-    const token = randomBytes(20).toString("hex");
-    const summary = tool.summarize ? tool.summarize(input) : `${tool.name} with provided arguments`;
-    const pending = await repo.createPendingAction({
-      sessionId: ctx.sessionId,
-      action: tool.name,
-      payload: { args: input, token, summary },
-      expiresInMinutes: PENDING_TTL_MINUTES,
-    });
-    const output = {
-      success: true,
-      pending: true,
-      pendingActionId: pending.id,
-      summary,
-      message: "This action requires confirmation. Ask the staff member to approve it.",
-    };
-    await logCall(repo, ctx, tool.name, input, output, true);
+    const pData = preview.data as { requiresConfirm?: boolean; summary?: string } | undefined;
+
+    if (tool.tier === "write" || pData?.requiresConfirm === true || !tool.apply) {
+      // Confirm-gated: stage the pending action — apply() runs via /api/agent/confirm.
+      const token = randomBytes(20).toString("hex");
+      const summary = pData?.summary ?? (tool.summarize ? tool.summarize(input) : `${tool.name} with provided arguments`);
+      const pending = await repo.createPendingAction({
+        sessionId: ctx.sessionId,
+        action: tool.name,
+        payload: { args: input, token, summary },
+        expiresInMinutes: PENDING_TTL_MINUTES,
+      });
+      const output = {
+        success: true,
+        pending: true,
+        pendingActionId: pending.id,
+        summary,
+        message: "This action requires confirmation. Ask the staff member to approve it.",
+      };
+      await logCall(repo, ctx, tool.name, input, output, true);
+      return {
+        record: { name: tool.name, input, success: true, pending: true, output: { summary } },
+        forModel: output,
+        pending: { id: pending.id, tool: tool.name, summary, expiresAt: pending.expiresAt, token },
+      };
+    }
+
+    // Direct tier: low-risk staff mutation — apply immediately, then stage
+    // an Undo pending action (a hidden revert tool) from the preview state.
+    const applied = await tool.apply(ctx, input).catch((e: unknown) => ({
+      success: false,
+      error: e instanceof Error ? e.message : "Tool execution failed",
+    }) as ToolResult);
+    await logCall(repo, ctx, tool.name, input, applied, applied.success);
+
+    let undoPending: PendingConfirmation | undefined;
+    if (applied.success && tool.undo) {
+      const undo = tool.undo(input, preview.data);
+      if (undo) {
+        const token = randomBytes(20).toString("hex");
+        const pa = await repo.createPendingAction({
+          sessionId: ctx.sessionId,
+          action: undo.tool,
+          payload: { args: undo.args, token, summary: undo.summary, undo: true },
+          expiresInMinutes: PENDING_TTL_MINUTES,
+        });
+        undoPending = { id: pa.id, tool: undo.tool, summary: undo.summary, expiresAt: pa.expiresAt, token, undo: true };
+      }
+    }
     return {
-      record: { name: tool.name, input, success: true, pending: true, output: { summary } },
-      forModel: output,
-      pending: { id: pending.id, tool: tool.name, summary, expiresAt: pending.expiresAt, token },
+      record: {
+        name: tool.name,
+        input,
+        success: applied.success,
+        output: applied.data,
+        error: applied.error,
+        ...(applied.cards?.length ? { cards: applied.cards } : {}),
+      },
+      forModel: { ...applied, undoAvailable: Boolean(undoPending) },
+      pending: undoPending,
+      quickReplies: applied.quickReplies,
     };
   }
 
@@ -179,6 +229,7 @@ async function dispatch(
         ...(output.cards?.length ? { cards: output.cards } : {}),
       },
       forModel: output,
+      quickReplies: output.quickReplies,
     };
   } catch (error) {
     const output: ToolResult = {
@@ -236,11 +287,12 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
   const toolCalls: ToolCallRecord[] = [];
   const pendingActions: PendingConfirmation[] = [];
   const cards: AgentCard[] = [];
+  const quickReplies: { label: string; message: string }[] = [];
   const seenCalls = new Set<string>();
-  const finish = (result: Omit<AgentResult, "cards">): AgentResult => {
+  const finish = (result: Omit<AgentResult, "cards" | "quickReplies">): AgentResult => {
     clearTimeout(runTimer);
     tlog(timing, `done steps=${result.steps} ok=${result.ok}${result.truncated ? " truncated" : ""} total=${Date.now() - started}ms`);
-    return { ...result, cards };
+    return { ...result, cards, ...(quickReplies.length ? { quickReplies } : {}) };
   };
   const stop = (reason: string, steps: number): AgentResult =>
     finish({ ok: false, reply: partialReply(reason, toolCalls, pendingActions), toolCalls, pendingActions, steps, truncated: true });
@@ -306,6 +358,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
         toolCalls.push(outcome.record);
         if (outcome.record.cards) cards.push(...outcome.record.cards);
         if (outcome.pending) pendingActions.push(outcome.pending);
+        if (outcome.quickReplies) quickReplies.push(...outcome.quickReplies);
         responseParts.push({
           functionResponse: { name: call.name, response: { result: outcome.forModel } },
         });

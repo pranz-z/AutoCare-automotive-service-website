@@ -1,5 +1,21 @@
 export type AgentRole = "public" | "staff" | "manager" | "admin";
-export type ToolTier = "read" | "write" | "admin";
+/**
+ * read — executes inline.
+ * write — stages a pending action; apply() runs only via confirmation.
+ * direct — low-risk staff mutation: executes immediately, then stages a
+ *          hidden revert pending action surfaced as an "Undo" button.
+ * admin — privileged ops.
+ */
+export type ToolTier = "read" | "write" | "direct" | "admin";
+
+/** Record the staff member is currently viewing — resolved server-side. */
+export interface OpenRecord {
+  type: "appointment" | "inquiry" | "customer" | "chat";
+  /** Internal id (e.g. "inq-001"), verified against the database. */
+  id: string;
+  /** Display reference (e.g. "QI-2025-00156") when the record has one. */
+  reference?: string;
+}
 
 /**
  * Server-verified identity for a tool call. Never populated from model
@@ -11,6 +27,8 @@ export interface AgentContext {
   actor?: string;
   /** chat_sessions row correlating this conversation; also linked by pending actions. */
   sessionId?: string;
+  /** The open admin record drawer — lets "this inquiry" resolve deterministically. */
+  openRecord?: OpenRecord;
 }
 
 export interface AgentCardField {
@@ -36,6 +54,8 @@ export interface ToolResult<T = unknown> {
   error?: string;
   /** Structured record cards for display; the model still sees `data`. */
   cards?: AgentCard[];
+  /** Clickable follow-up messages rendered as chips — e.g. open slot options. */
+  quickReplies?: { label: string; message: string }[];
 }
 
 export interface JsonSchema {
@@ -56,14 +76,28 @@ export interface AgentTool {
   roles: AgentRole[];
   /**
    * For read/admin tools: performs the work.
-   * For write tools: validates input and records a pending_actions row —
-   * the real mutation only happens through apply() after confirmation.
+   * For write/direct tools: validates input and returns a preview; write
+   * tools then stage a pending action, direct tools run apply() immediately.
+   * A successful preview may set data.requiresConfirm to force the write
+   * path (used by bulk inputs on direct tools).
    */
   execute(ctx: AgentContext, input: Record<string, unknown>): Promise<ToolResult>;
   /** Write tools: human-readable preview stored with the pending action. */
   summarize?(input: Record<string, unknown>): string;
-  /** Write tools: the real mutation, invoked by POST /api/agent/confirm. */
+  /** Write/direct tools: the real mutation — for write tools invoked by POST /api/agent/confirm. */
   apply?(ctx: AgentContext, input: Record<string, unknown>): Promise<ToolResult>;
+  /**
+   * Direct tools: builds the revert pending action ("Undo") from a
+   * successful preview — points at a hidden revert tool.
+   */
+  undo?(input: Record<string, unknown>, preview: unknown):
+    | { tool: string; args: Record<string, unknown>; summary: string }
+    | undefined;
+  /**
+   * Apply-only tools (revert targets): never declared to the model and
+   * rejected if invoked by name — they run solely via pending confirm.
+   */
+  hidden?: boolean;
 }
 
 export interface ModelToolCall {
@@ -117,6 +151,8 @@ export interface PendingConfirmation {
    * the single-use confirmation.
    */
   token: string;
+  /** True for auto-staged revert actions — the UI renders them as "Undo". */
+  undo?: boolean;
 }
 
 export interface ToolCallRecord {
@@ -138,6 +174,8 @@ export interface AgentResult {
   pendingActions: PendingConfirmation[];
   /** All cards emitted by tool calls, in call order. */
   cards: AgentCard[];
+  /** Clickable follow-up suggestions from tool output (e.g. open slots). */
+  quickReplies?: { label: string; message: string }[];
   steps: number;
   truncated?: boolean;
 }

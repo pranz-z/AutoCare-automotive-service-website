@@ -71,7 +71,7 @@ const SCENARIOS: Scenario[] = [
   // ---- injection / privilege escalation attempts ----
   { name: "public user text demands admin tools", role: "public", turns: [call("reset_demo_data"), text("can't do that")], expectFailed: ["reset_demo_data"], expectOk: true },
   { name: "public caller probes staff search", role: "public", turns: [call("search_customers"), text("denied")], expectFailed: ["search_customers"], expectOk: true },
-  { name: "injected role arg is schema-rejected", role: "staff", turns: [call("update_inquiry_status", { id: "inq-001", status: "closed", role: "admin" }), text("bad args")], expectFailed: ["update_inquiry_status"], expectOk: true },
+  { name: "injected role arg is schema-rejected", role: "staff", turns: [call("set_inquiry_status", { id: "inq-001", status: "closed", role: "admin" }), text("bad args")], expectFailed: ["set_inquiry_status"], expectOk: true },
   { name: "unknown tool call", role: "staff", turns: [call("exec_sql", { q: "drop" }), text("no")], expectFailed: ["exec_sql"], expectOk: true },
 
   // ---- staff read flows ----
@@ -85,9 +85,9 @@ const SCENARIOS: Scenario[] = [
   { name: "staff conversation summary", role: "staff", turns: [call("summarize_conversation", { sessionId: "eval-staff" }), text("summary")], expectCalls: ["summarize_conversation"], expectOk: true },
 
   // ---- staff write flows (pending staging, never direct) ----
-  { name: "propose reschedule stages approval", role: "staff", turns: [call("propose_reschedule", { reference: "AC-2025-00042", date: "2027-06-01", time: "09:00" }), text("proposed")], expectPending: ["propose_reschedule"], expectOk: true },
+  { name: "reschedule stages approval", role: "staff", turns: [call("reschedule_appointment", { id: "AC-2025-00042", date: "2027-06-01", time: "09:00" }), text("proposed")], expectPending: ["reschedule_appointment"], expectOk: true },
   { name: "create booking stages approval", role: "staff", turns: [call("create_booking", { customerName: "E", customerEmail: "e@x.com", vehicleInfo: "Car", serviceId: "oil-change", branchId: "branch-bgc", date: "2027-06-02", time: "10:00" }), text("staged")], expectPending: ["create_booking"], expectOk: true },
-  { name: "manager stages inquiry update", role: "manager", turns: [call("update_inquiry_status", { id: "inq-001", status: "reviewed" }), text("staged")], expectPending: ["update_inquiry_status"], expectOk: true },
+  { name: "manager stages a bulk inquiry resolve", role: "manager", turns: [call("set_inquiry_status", { ids: ["inq-001", "inq-002"], status: "resolved" }), text("staged")], expectPending: ["set_inquiry_status"], expectOk: true },
   { name: "staff cannot run admin reset", role: "staff", turns: [call("reset_demo_data"), text("denied")], expectFailed: ["reset_demo_data"], expectOk: true },
 
   // ---- admin ----
@@ -169,7 +169,7 @@ describe("prompt injection defenses", () => {
     const model = new ScriptedModel([text("ok")]);
     await runAgent({ model, ctx: { role: "public" }, message: "x", system: "sys" });
     const declared = model.calls[0].tools.map((t) => t.name);
-    for (const staffTool of ["reset_demo_data", "search_customers", "update_inquiry_status", "list_agent_actions"]) {
+    for (const staffTool of ["reset_demo_data", "search_customers", "set_inquiry_status", "list_agent_actions"]) {
       assert.ok(!declared.includes(staffTool));
     }
   });

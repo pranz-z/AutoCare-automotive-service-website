@@ -214,16 +214,16 @@ describe("agent runtime", () => {
   test("write-tier tools stage a pending action instead of mutating data", async () => {
     await ensureSessions();
     const repo = createRepository(await getDb());
-    const before = await repo.getInquiry("QI-2025-00156");
+    const before = await repo.getAppointmentByReference("AC-2025-00043");
     const model = new ScriptedModel([
-      { toolCalls: [{ name: "update_inquiry_status", args: { id: "inq-001", status: "reviewed" } }] },
+      { toolCalls: [{ name: "cancel_appointment", args: { id: "AC-2025-00043" } }] },
       { text: "Staged for confirmation." },
     ]);
-    const result = await runAgent({ model, ctx: staffCtx, message: "mark inq-001 reviewed", system: "sys" });
+    const result = await runAgent({ model, ctx: staffCtx, message: "cancel AC-2025-00043", system: "sys" });
     assert.equal(result.pendingActions.length, 1);
-    assert.match(result.pendingActions[0].summary, /inq-001/);
+    assert.match(result.pendingActions[0].summary, /AC-2025-00043/);
     // No mutation yet.
-    const after = await repo.getInquiry("QI-2025-00156");
+    const after = await repo.getAppointmentByReference("AC-2025-00043");
     assert.equal(after?.status, before?.status);
     const pending = await repo.getPendingAction(result.pendingActions[0].id);
     assert.equal(pending?.status, "pending");
@@ -320,9 +320,9 @@ describe("booking tools", () => {
     assert.equal(appt?.customerName, "Ana Reyes");
   });
 
-  test("reschedule_booking moves the appointment after confirmation", async () => {
-    const { res } = await stageAndConfirm("reschedule_booking", {
-      reference: "AC-2025-00043", date: "2027-03-11", time: "14:00",
+  test("reschedule_appointment moves the appointment after confirmation", async () => {
+    const { res } = await stageAndConfirm("reschedule_appointment", {
+      id: "AC-2025-00043", date: "2027-03-11", time: "14:00",
     });
     assert.equal(res.status, 200);
     const repo = createRepository(await getDb());
@@ -331,18 +331,18 @@ describe("booking tools", () => {
     assert.equal(appt?.time, "14:00");
   });
 
-  test("reschedule_booking rejects a full slot", async () => {
-    const tool = getTool("reschedule_booking")!;
+  test("reschedule_appointment rejects a full slot", async () => {
+    const tool = getTool("reschedule_appointment")!;
     const result = await tool.execute(staffCtx, {
-      reference: "AC-2025-00042", date: "2027-03-09", time: "09:00",
+      id: "AC-2025-00042", date: "2027-03-09", time: "09:00",
     });
     // branch-bgc 2027-03-09 09:00 was filled to capacity by the earlier test.
     assert.equal(result.success, false);
     assert.match(result.error ?? "", /fully booked/);
   });
 
-  test("cancel_booking cancels after confirmation", async () => {
-    const { res } = await stageAndConfirm("cancel_booking", { reference: "AC-2025-00043" });
+  test("cancel_appointment cancels after confirmation", async () => {
+    const { res } = await stageAndConfirm("cancel_appointment", { id: "AC-2025-00043" });
     assert.equal(res.status, 200);
     const repo = createRepository(await getDb());
     const appt = await repo.getAppointmentByReference("AC-2025-00043");
@@ -364,15 +364,18 @@ describe("booking tools", () => {
 describe("POST /api/agent/confirm", () => {
   async function stageUpdate() {
     await ensureSessions();
+    const repo = createRepository(await getDb());
+    // Fresh inquiries so this test's mutations can't interfere with seed assertions.
+    const a = await repo.createInquiry({ customerName: "Stage A", customerEmail: "a@example.com", subject: "one", category: "general", message: "m1" });
+    const b = await repo.createInquiry({ customerName: "Stage B", customerEmail: "b@example.com", subject: "two", category: "general", message: "m2" });
     const model = new ScriptedModel([
-      { toolCalls: [{ name: "update_inquiry_status", args: { id: "inq-002", status: "resolved" } }] },
+      { toolCalls: [{ name: "set_inquiry_status", args: { ids: [a.id, b.id], status: "resolved" } }] },
       { text: "staged" },
     ]);
     const result = await runAgent({ model, ctx: staffCtx, message: "x", system: "sys" });
-    const repo = createRepository(await getDb());
     const pending = await repo.getPendingAction(result.pendingActions[0].id);
     const token = (JSON.parse(pending!.payload) as { token: string }).token;
-    return { id: result.pendingActions[0].id, token };
+    return { id: result.pendingActions[0].id, token, refs: [a.reference, b.reference] };
   }
 
   test("rejects unauthenticated requests", async () => {
@@ -393,13 +396,14 @@ describe("POST /api/agent/confirm", () => {
   });
 
   test("executes a valid action exactly once", async () => {
-    const { id, token } = await stageUpdate();
+    const { id, token, refs } = await stageUpdate();
     const repo = createRepository(await getDb());
 
     const res = await confirmPOST(staffRequest({ id, token }));
     assert.equal(res.status, 200);
-    const inquiry = await repo.getInquiry("QI-2025-00155");
-    assert.equal(inquiry?.status, "resolved");
+    for (const ref of refs) {
+      assert.equal((await repo.getInquiry(ref))?.status, "resolved");
+    }
 
     // Reuse of the consumed token must fail.
     const replay = await confirmPOST(staffRequest({ id, token }));
@@ -416,7 +420,7 @@ describe("POST /api/agent/confirm", () => {
     const repo = createRepository(await getDb());
     const expired = await repo.createPendingAction({
       sessionId: "test-session",
-      action: "update_inquiry_status",
+      action: "set_inquiry_status",
       payload: { args: { id: "inq-003", status: "resolved" }, token: "tok", summary: "x" },
       expiresInMinutes: -1,
     });
@@ -431,7 +435,7 @@ describe("POST /api/agent/confirm", () => {
     await confirmPOST(staffRequest({ id, token }));
     const repo = createRepository(await getDb());
     const actions = await repo.listAgentActions();
-    assert.ok(actions.some((a) => a.toolName === "update_inquiry_status#confirm" && a.sessionId === "test-session" && a.success));
+    assert.ok(actions.some((a) => a.toolName === "set_inquiry_status#confirm" && a.sessionId === "test-session" && a.success));
   });
 });
 
@@ -474,10 +478,10 @@ describe("admin agent tools", () => {
     assert.ok(data.openInquiries >= 0 && data.newQuotes >= 0 && data.pendingApprovals >= 0);
   });
 
-  test("propose_reschedule stages a pending action that executes on approval", async () => {
+  test("reschedule_appointment stages a pending action that executes on approval", async () => {
     await ensureSessions();
     const model = new ScriptedModel([
-      { toolCalls: [{ name: "propose_reschedule", args: { reference: "AC-2025-00042", date: "2027-04-14", time: "15:00", reason: "customer request" } }] },
+      { toolCalls: [{ name: "reschedule_appointment", args: { id: "AC-2025-00042", date: "2027-04-14", time: "15:00", reason: "customer request" } }] },
       { text: "proposed" },
     ]);
     const result = await runAgent({ model, ctx: staffCtx, message: "x", system: "sys" });
@@ -495,7 +499,7 @@ describe("admin agent tools", () => {
   });
 
   test("admin-only: public callers cannot reach the admin tools", async () => {
-    for (const name of ["triage_inquiry", "draft_reply", "summarize_conversation", "daily_brief", "propose_reschedule"]) {
+    for (const name of ["triage_inquiry", "draft_reply", "summarize_conversation", "daily_brief", "reschedule_appointment"]) {
       const tool = getTool(name)!;
       assert.ok(!tool.roles.includes("public"), `${name} must not be public`);
     }
@@ -563,7 +567,7 @@ describe("POST /api/agent/reject", () => {
       branchId: "branch-bgc", date: "2027-05-05", time: "10:00",
     });
     const model = new ScriptedModel([
-      { toolCalls: [{ name: "cancel_booking", args: { reference: appt.reference } }] },
+      { toolCalls: [{ name: "cancel_appointment", args: { id: appt.reference } }] },
       { text: "staged" },
     ]);
     const result = await runAgent({ model, ctx: staffCtx, message: "x", system: "sys" });
