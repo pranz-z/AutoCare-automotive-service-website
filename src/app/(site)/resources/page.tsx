@@ -17,7 +17,7 @@ export default function ResourcesPage() {
         title="Auto Guide"
         description="Practical maintenance writing—intervals, warning lights, and trip prep."
       />
-      <Container className="py-16 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <Container className="grid gap-x-10 py-16 sm:py-20 md:grid-cols-2">
         {articles.map((article) => (
           <BlogCard key={article.slug} article={article} />
         ))}

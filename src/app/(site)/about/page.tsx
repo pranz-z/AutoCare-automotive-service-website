@@ -15,49 +15,69 @@ export default function AboutPage() {
   return (
     <>
       <PageHeader eyebrow={about.eyebrow} title={about.title} description={company.description} />
-      <Container className="py-16 space-y-16">
-        <div className="grid gap-10 lg:grid-cols-2">
-          {about.story.map((paragraph) => (
-            <p key={paragraph.slice(0, 20)} className="text-lg leading-relaxed text-muted">
-              {paragraph}
-            </p>
-          ))}
+      <Container className="space-y-16 py-16 sm:py-20">
+        <div className="grid gap-8 border-b border-line pb-12 lg:grid-cols-12">
+          <p className="meta text-accent lg:col-span-3">Workshop standards</p>
+          <div className="grid gap-5 lg:col-span-9 lg:grid-cols-2">
+            {about.story.map((paragraph) => (
+              <p key={paragraph.slice(0, 20)} className="text-base leading-relaxed text-muted">
+                {paragraph}
+              </p>
+            ))}
+          </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
+
+        <div className="grid border-y border-line md:grid-cols-3">
           {[
             { title: "Mission", body: about.mission },
             { title: "Vision", body: about.vision },
             { title: "Why we exist", body: about.whyWeExist },
-          ].map((item) => (
-            <article key={item.title} className="bg-primary text-inverted p-6 min-h-[16rem]">
-              <h2 className="font-heading text-2xl">{item.title}</h2>
-              <p className="mt-3 text-sm text-inverted/70 leading-relaxed">{item.body}</p>
+          ].map((item, index) => (
+            <article
+              key={item.title}
+              className={`py-6 md:px-6 ${index > 0 ? "border-t border-line md:border-l md:border-t-0" : "md:pl-0"}`}
+            >
+              <p className="meta text-accent">{item.title}</p>
+              <p className="mt-4 text-base leading-relaxed text-ink">{item.body}</p>
             </article>
           ))}
         </div>
-        <section>
-          <h2 className="font-heading text-3xl">Service philosophy</h2>
-          <p className="mt-3 max-w-3xl text-muted">{about.philosophy}</p>
-          <ul className="mt-6 grid sm:grid-cols-2 gap-3">
+
+        <section className="grid gap-8 lg:grid-cols-12">
+          <div className="lg:col-span-4">
+            <h2 className="font-heading text-4xl">Service philosophy</h2>
+            <p className="mt-4 text-base leading-relaxed text-muted">{about.philosophy}</p>
+          </div>
+          <ul className="border-t border-line lg:col-span-8">
             {about.standards.map((item) => (
-              <li key={item} className="border border-line bg-surface px-4 py-3 text-sm">
+              <li key={item} className="border-b border-line py-4 text-sm leading-relaxed">
                 {item}
               </li>
             ))}
           </ul>
         </section>
+
         <section>
-          <h2 className="font-heading text-3xl mb-6">Technicians</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-end sm:justify-between">
+            <h2 className="font-heading text-4xl">Technicians</h2>
+            <p className="text-sm text-muted">Workshop and mobile teams</p>
+          </div>
+          <div className="mt-6 grid gap-6 md:grid-cols-3">
             {about.technicians.map((person) => (
-              <article key={person.name} className="bg-surface border border-line">
-                <div className="relative h-56">
-                  <Image src={person.image} alt={person.name} fill className="object-cover" sizes="33vw" />
+              <article key={person.name} className="group">
+                <div className="relative h-72 overflow-hidden border border-line bg-primary">
+                  <Image
+                    src={person.image}
+                    alt={person.name}
+                    fill
+                    className="object-cover opacity-85 transition-transform duration-700 ease-[var(--ease-out)] group-hover:scale-105"
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                  />
                 </div>
-                <div className="p-4">
-                  <h3 className="font-heading text-xl">{person.name}</h3>
-                  <p className="text-sm text-accent">{person.role}</p>
-                  <p className="text-sm text-muted mt-2">{person.focus}</p>
+                <div className="border-x border-b border-line p-4">
+                  <h3 className="font-heading text-2xl leading-none">{person.name}</h3>
+                  <p className="mt-2 text-[11px] uppercase tracking-[0.12em] text-accent">{person.role}</p>
+                  <p className="mt-3 text-sm leading-relaxed text-muted">{person.focus}</p>
                 </div>
               </article>
             ))}

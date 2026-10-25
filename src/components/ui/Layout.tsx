@@ -8,7 +8,7 @@ export function Container({
   className?: string;
 }) {
   return (
-    <div className={`mx-auto w-full max-w-[72rem] px-5 sm:px-8 ${className}`}>
+    <div className={`mx-auto w-full max-w-[80rem] px-4 sm:px-6 lg:px-8 ${className}`}>
       {children}
     </div>
   );
@@ -27,25 +27,45 @@ export function SectionHeader({
   light?: boolean;
   align?: "left" | "center";
 }) {
-  return (
-    <div className={`max-w-3xl ${align === "center" ? "mx-auto text-center" : ""}`}>
-      {eyebrow ? (
-        <p
-          className={`text-[12px] font-semibold tracking-[0.22em] uppercase mb-3 ${light ? "text-accent" : "text-accent"}`}
+  if (align === "center") {
+    return (
+      <div className="mx-auto max-w-3xl text-center">
+        <h2
+          className={`display text-4xl sm:text-5xl lg:text-6xl ${light ? "text-inverted" : "text-ink"}`}
         >
-          {eyebrow}
-        </p>
-      ) : null}
-      <h2
-        className={`font-heading text-3xl sm:text-4xl lg:text-[2.75rem] leading-[1.1] tracking-tight ${light ? "text-inverted" : "text-ink"}`}
-      >
-        {title}
-      </h2>
-      {description ? (
-        <p className={`mt-4 text-base sm:text-lg leading-relaxed ${light ? "text-inverted/70" : "text-muted"}`}>
-          {description}
-        </p>
-      ) : null}
+          {title}
+        </h2>
+        {description ? (
+          <p className={`mx-auto mt-5 max-w-2xl text-base leading-relaxed sm:text-lg ${light ? "text-inverted/70" : "text-muted"}`}>
+            {description}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-12 lg:gap-8">
+      <div className="lg:col-span-3">
+        {eyebrow ? (
+          <>
+            <p className={`meta ${light ? "text-accent" : "text-accent"}`}>{eyebrow}</p>
+            <div className="mt-3 h-px w-10 bg-accent" />
+          </>
+        ) : null}
+      </div>
+      <div className="lg:col-span-9">
+        <h2
+          className={`display text-4xl sm:text-5xl lg:text-6xl ${light ? "text-inverted" : "text-ink"}`}
+        >
+          {title}
+        </h2>
+        {description ? (
+          <p className={`mt-5 max-w-3xl text-base leading-relaxed sm:text-lg ${light ? "text-inverted/70" : "text-muted"}`}>
+            {description}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -60,19 +80,24 @@ export function PageHeader({
   description?: string;
 }) {
   return (
-    <section className="bg-primary text-inverted pt-28 pb-16 sm:pt-32 sm:pb-20">
-      <Container>
-        {eyebrow ? (
-          <p className="text-[12px] font-semibold tracking-[0.22em] uppercase text-accent mb-4">
-            {eyebrow}
-          </p>
-        ) : null}
-        <h1 className="font-heading text-4xl sm:text-5xl lg:text-6xl max-w-4xl leading-[1.05]">
-          {title}
-        </h1>
-        {description ? (
-          <p className="mt-5 max-w-2xl text-lg text-inverted/70 leading-relaxed">{description}</p>
-        ) : null}
+    <section className="relative overflow-hidden border-b border-white/10 bg-primary pb-14 pt-[8.5rem] text-inverted sm:pb-16">
+      <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[34%] border-l border-white/10 lg:block" />
+      <div className="pointer-events-none absolute bottom-0 right-[34%] hidden h-20 w-px bg-accent/70 lg:block" />
+      <Container className="relative">
+        <div className="grid gap-6 lg:grid-cols-12 lg:gap-8">
+          <div className="lg:col-span-3">
+            {eyebrow ? <p className="meta text-accent">{eyebrow}</p> : null}
+            <div className="mt-4 h-px w-12 bg-accent" />
+          </div>
+          <div className="lg:col-span-9">
+            <h1 className="display max-w-5xl text-5xl sm:text-6xl lg:text-7xl">{title}</h1>
+            {description ? (
+              <p className="mt-6 max-w-3xl text-base leading-relaxed text-inverted/70 sm:text-lg">
+                {description}
+              </p>
+            ) : null}
+          </div>
+        </div>
       </Container>
     </section>
   );
@@ -80,7 +105,7 @@ export function PageHeader({
 
 export function Badge({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center border border-line px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-muted">
+    <span className="inline-flex items-center border border-current/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]">
       {children}
     </span>
   );
@@ -110,10 +135,10 @@ export function Field({
   options?: { value: string; label: string }[];
 }) {
   const shared =
-    "w-full bg-surface border border-line px-3.5 py-3 text-sm text-ink placeholder:text-muted/70 focus:border-accent";
+    "min-h-12 w-full rounded-none border border-line bg-surface px-3.5 py-3 text-sm text-ink placeholder:text-muted/70 transition-colors duration-[var(--t-hover)] focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30";
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.14em] uppercase text-muted">
+      <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
         {label}
         {required ? <span className="text-accent"> *</span> : null}
       </span>

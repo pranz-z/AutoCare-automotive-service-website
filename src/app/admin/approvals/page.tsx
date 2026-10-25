@@ -42,16 +42,20 @@ export default async function AdminApprovalsPage() {
 
   return (
     <AdminPageFrame title="Approvals" subtitle="Agent-proposed changes awaiting a staff decision">
-      <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+      <section className="border border-white/10 bg-[#0c1925]">
+        <div className="border-b border-white/10 px-4 py-3">
+          <p className="meta text-accent">Decision queue</p>
+          <h2 className="mt-1 font-heading text-2xl text-inverted">Pending approvals</h2>
+        </div>
         {pending.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted">No pending approvals.</p>
+          <p className="px-4 py-10 text-center text-sm text-inverted/45">No pending approvals.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="divide-y divide-white/10">
             {pending.map((p) => (
-              <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-4 py-3">
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
                 <div>
-                  <p className="font-medium">{p.summary}</p>
-                  <p className="mt-1 text-xs text-muted">
+                  <p className="font-medium text-inverted">{p.summary}</p>
+                  <p className="mt-1 text-xs text-inverted/40">
                     {p.action} · proposed {new Date(p.createdAt).toLocaleString()} ·{" "}
                     {p.expired ? "expired" : `expires ${new Date(p.expiresAt).toLocaleTimeString()}`}
                   </p>
@@ -63,7 +67,7 @@ export default async function AdminApprovalsPage() {
                     <button
                       type="submit"
                       disabled={p.expired}
-                      className="rounded-md bg-green-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-white hover:bg-green-700 disabled:opacity-40"
+                      className="min-h-9 border border-accent bg-accent px-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-contrast disabled:opacity-40"
                     >
                       Approve
                     </button>
@@ -72,7 +76,7 @@ export default async function AdminApprovalsPage() {
                     <input type="hidden" name="id" value={p.id} />
                     <button
                       type="submit"
-                      className="rounded-md border border-line px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted hover:bg-canvas"
+                      className="min-h-9 border border-white/15 px-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-inverted/55 hover:border-white/30 hover:text-inverted"
                     >
                       Reject
                     </button>
@@ -82,22 +86,24 @@ export default async function AdminApprovalsPage() {
             ))}
           </div>
         )}
-      </div>
+      </section>
 
       {resolved.length > 0 && (
-        <div className="mt-6 rounded-2xl border border-line bg-surface p-5 shadow-sm">
-          <p className="mb-3 text-xs uppercase tracking-[0.1em] text-muted">Recently resolved</p>
-          <div className="space-y-2">
+        <section className="mt-6 border border-white/10 bg-[#0c1925]">
+          <div className="border-b border-white/10 px-4 py-3">
+            <p className="meta text-inverted/40">Recently resolved</p>
+          </div>
+          <div className="divide-y divide-white/10">
             {resolved.map((r) => (
-              <div key={r.id} className="flex items-center justify-between text-sm">
-                <span>{r.action}</span>
-                <span className={`text-xs uppercase tracking-[0.1em] ${r.status === "confirmed" ? "text-green-700" : "text-muted"}`}>
+              <div key={r.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                <span className="text-inverted/60">{r.action}</span>
+                <span className={`text-[10px] uppercase tracking-[0.12em] ${r.status === "confirmed" ? "text-green-400" : "text-inverted/35"}`}>
                   {r.status}
                 </span>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
     </AdminPageFrame>
   );

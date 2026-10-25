@@ -66,8 +66,8 @@ export const site: SiteConfig = {
     title: "Professional Car Care.\nWithout the Hassle.",
     subtitle: "Reliable Car Care, Wherever You Are.",
     description:
-      "From preventive maintenance to diagnostics and repairs, our automotive specialists help keep your vehicle safe, reliable, and road-ready.",
-    backgroundImage: images.hero,
+      "Quoted ranges before work begins, written findings after every visit, and a warranty on covered work—at your home, office, or our Taguig workshop.",
+    backgroundImage: images.mobile,
     primaryCTA: { label: "Book a Service", href: "/book" },
     secondaryCTA: { label: "Get a Free Quote", href: "/quote" },
   },

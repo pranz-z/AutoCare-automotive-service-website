@@ -9,14 +9,14 @@ import {
 } from "@/app/admin/record-actions";
 
 const btn =
-  "w-full rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-[0.15em] transition " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40";
-const primaryBtn = `${btn} border-primary bg-primary text-inverted hover:opacity-90`;
-const ghostBtn = `${btn} border-line bg-canvas text-ink hover:bg-surface`;
-const dangerBtn = `${btn} border-red-300 bg-canvas text-red-700 hover:bg-red-50`;
+  "min-h-9 w-full border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-40";
+const primaryBtn = `${btn} border-accent bg-accent text-accent-contrast hover:bg-[#d68c3d]`;
+const ghostBtn = `${btn} border-white/15 bg-transparent text-inverted/60 hover:border-white/30 hover:text-inverted`;
+const dangerBtn = `${btn} border-red-400/40 bg-transparent text-red-300 hover:border-red-300`;
 const input =
-  "w-full rounded-md border border-line bg-surface px-2.5 py-1.5 text-xs " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
+  "min-h-9 w-full border border-white/15 bg-[#102231] px-2.5 py-1.5 text-xs text-inverted " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent";
 
 function StateLine({ state }: { state: ActionState }) {
   if (!state) return null;
@@ -43,8 +43,8 @@ export function PendingDecision({
 }) {
   const [state, formAction, pending] = useActionState(decidePendingAction, null);
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-amber-800">Agent proposal</p>
+    <div className="border border-amber-300/30 bg-[#2a2114] px-3 py-3">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-amber-200">Agent proposal</p>
       <p className="mt-1 text-sm font-medium text-ink">{summary}</p>
       <p className="mt-0.5 text-xs text-muted">
         {action} · {expired ? "expired" : "awaiting decision"}
@@ -88,7 +88,7 @@ export function AppointmentPanelActions({ id, allowed }: { id: string; allowed: 
       <div className="mt-2 space-y-2">
         {has("confirm") && single("confirm", "Confirm", primaryBtn)}
         {has("reschedule") && (
-          <form action={formAction} className="space-y-2 rounded-lg border border-line bg-canvas p-3">
+          <form action={formAction} className="space-y-2 border border-white/10 bg-[#102231] p-3">
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="action" value="reschedule" />
             <p className="text-xs font-semibold uppercase tracking-[0.15em] text-muted">Reschedule</p>
@@ -159,7 +159,7 @@ export function InquiryPanelActions({
           </form>
         )}
         {open && (
-          <details className="rounded-lg border border-line bg-canvas">
+          <details className="border border-white/10 bg-[#102231]">
             <summary className="cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-muted">
               Convert to appointment
             </summary>

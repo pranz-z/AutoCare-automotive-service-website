@@ -47,3 +47,16 @@ next-env.d.ts
 *.db-journal
 *.db-wal
 *.db-shm
+
+# generated design and review tooling
+/.taste-skill/
+/.impeccable/
+
+# generated page screenshots
+/screenshots/
+
+# remotion video build artifacts
+/video/node_modules/
+/video/out/
+/video/.remotion/
+/video/*.log

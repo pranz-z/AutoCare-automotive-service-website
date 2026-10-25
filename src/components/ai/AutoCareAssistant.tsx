@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { MarkdownReply } from "@/components/ai/MarkdownReply";
 import { isNearBottom, pickScrollTarget } from "@/components/ai/scroll-utils";
@@ -324,11 +325,12 @@ export function AutoCareAssistant({
   // there so the two floating widgets never overlap.
   const pathname = usePathname();
   if (mode !== "admin" && pathname.startsWith("/admin")) return null;
+  if (mode === "admin" && pathname === "/admin/login") return null;
 
   if (!isOpen) {
     if (inline) {
       return (
-        <div className="w-full rounded-xl border border-line bg-surface shadow-sm">
+        <div className="w-full border border-line bg-surface">
           <div className="flex items-center justify-between border-b border-line bg-primary px-4 py-3 text-inverted">
             <div>
               <p className="font-heading text-xl">AutoCare Assistant</p>
@@ -343,21 +345,23 @@ export function AutoCareAssistant({
     }
 
     return (
-      <div className="fixed bottom-5 right-5 z-50">
+      <div className={`fixed right-4 z-50 sm:bottom-5 sm:right-5 ${mode === "admin" ? "bottom-5" : "bottom-20"}`}>
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="rounded-full bg-primary px-5 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-inverted shadow-lg shadow-primary/20"
+          aria-label="Open AutoCare Assistant"
+          className="grid min-h-12 place-items-center border border-accent bg-primary px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-inverted transition-colors hover:border-accent hover:bg-secondary sm:inline-flex sm:gap-2"
         >
-          AutoCare Assistant
+          <MessageSquare className="h-4 w-4 text-accent" />
+          <span className="hidden sm:inline">Chat with AutoCare</span>
         </button>
       </div>
     );
   }
 
   const wrapperClass = inline
-    ? "w-full rounded-xl border border-line bg-surface shadow-sm overflow-hidden"
-    : "fixed inset-0 z-50 bg-black/20 sm:inset-auto sm:bottom-5 sm:right-5 sm:left-auto sm:w-[26rem] sm:rounded-xl sm:border sm:border-line sm:bg-surface sm:shadow-2xl sm:shadow-primary/10";
+    ? "w-full border border-line bg-surface overflow-hidden"
+    : "fixed inset-0 z-50 bg-black/30 sm:inset-auto sm:bottom-5 sm:right-5 sm:left-auto sm:w-[28rem] sm:border sm:border-white/15 sm:bg-surface";
 
   return (
     <div className={wrapperClass}>
@@ -396,7 +400,7 @@ export function AutoCareAssistant({
               data-mid={message.id}
               className={`mb-4 ${message.role === "user" ? "ml-auto max-w-[85%]" : "mr-auto max-w-[85%]"}`}
             >
-              <div className={`rounded-lg px-4 py-2 ${message.role === "user" ? "bg-primary text-inverted" : "bg-muted text-ink"}`}>
+              <div className={`border px-4 py-3 ${message.role === "user" ? "border-primary bg-primary text-inverted" : "border-line bg-canvas text-ink"}`}>
                 {message.role === "assistant" ? (
                   <>
                     <MarkdownReply content={message.content} />
@@ -425,9 +429,9 @@ export function AutoCareAssistant({
 
           {isLoading && (
             <div className="mr-auto max-w-[85%] mb-4">
-              <div className="rounded-lg bg-muted px-4 py-2">
+              <div className="border border-line bg-canvas px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 animate-spin rounded-full bg-primary" />
+                  <div className="h-2 w-2 animate-spin bg-primary" />
                   <span className="text-sm text-muted">Thinking...</span>
                 </div>
               </div>
@@ -496,7 +500,7 @@ export function AutoCareAssistant({
                     setQuickReplies([]);
                     void handleSubmit(qr.message);
                   }}
-                  className="rounded-full border border-line bg-surface px-3 py-1 text-xs text-ink hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="min-h-8 border border-line bg-surface px-3 py-1 text-xs text-ink transition-colors hover:border-accent hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   {qr.label}
                 </button>
@@ -526,7 +530,7 @@ export function AutoCareAssistant({
                 key={index}
                 onClick={() => handleSubmit(action)}
                 disabled={isLoading}
-                className="rounded-full border border-line bg-surface px-3 py-1 text-xs text-ink hover:bg-muted disabled:opacity-50"
+                className="min-h-8 border border-line bg-surface px-3 py-1 text-xs text-ink transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
               >
                 {action}
               </button>

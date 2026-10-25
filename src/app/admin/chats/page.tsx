@@ -40,7 +40,7 @@ export default async function AdminChatsPage({
     <AdminPageFrame title="Chats" subtitle="Customer conversations and AI staff handoff overview">
       {missing ? <RecordNotice message="Record not found." closeHref="/admin/chats" /> : null}
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+        <section className="border border-line bg-surface p-5">
           <h2 className="font-heading text-2xl">Conversation inbox</h2>
           <div className="mt-5 space-y-3">
             {adminChats.map((chat) => (
@@ -67,7 +67,7 @@ export default async function AdminChatsPage({
           </div>
         </section>
 
-        <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+        <section className="border border-line bg-surface p-5">
           <h2 className="font-heading text-2xl">Conversation</h2>
           <div className="mt-4 space-y-3">
             {adminChats[0]?.messages.map((message) => (

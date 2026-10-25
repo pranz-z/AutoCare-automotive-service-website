@@ -6,7 +6,7 @@ export function HowItWorks() {
   const { howItWorks } = getSite();
 
   return (
-    <section id="how-it-works" className="bg-primary text-inverted py-20 sm:py-28">
+    <section id="how-it-works" className="border-y border-white/10 bg-primary py-20 text-inverted sm:py-28">
       <Container>
         <SectionHeader
           light
@@ -14,17 +14,23 @@ export function HowItWorks() {
           title={howItWorks.title}
           description={howItWorks.description}
         />
-        <div className="mt-14 grid gap-0 lg:grid-cols-3 relative">
-          <div className="hidden lg:block absolute top-10 left-[16%] right-[16%] h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent" />
-          {howItWorks.steps.map((step) => (
-            <div key={step.number} className="relative px-2 py-8 lg:px-8 border-t border-white/10 lg:border-t-0">
-              <p className="font-heading text-6xl text-accent/80">{step.number}</p>
-              <div className="mt-4 inline-flex h-10 w-10 items-center justify-center border border-accent/40 text-accent">
-                <ConfigIcon name={step.icon} />
+        <div className="mt-14 grid gap-0 border-t border-white/15 lg:grid-cols-3">
+          {howItWorks.steps.map((step, index) => (
+            <article
+              key={step.number}
+              className={`relative border-b border-white/10 py-8 lg:border-b-0 lg:px-8 ${
+                index > 0 ? "lg:border-l lg:border-white/10" : ""
+              }`}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <p className="meta text-accent">{step.number}</p>
+                <span className="grid h-11 w-11 place-items-center border border-white/15 text-accent">
+                  <ConfigIcon name={step.icon} />
+                </span>
               </div>
-              <h3 className="font-heading mt-5 text-2xl">{step.title}</h3>
-              <p className="mt-3 text-sm leading-relaxed text-inverted/65">{step.description}</p>
-            </div>
+              <h3 className="mt-8 font-heading text-2xl leading-tight text-inverted">{step.title}</h3>
+              <p className="mt-3 max-w-sm text-sm leading-relaxed text-inverted/60">{step.description}</p>
+            </article>
           ))}
         </div>
       </Container>

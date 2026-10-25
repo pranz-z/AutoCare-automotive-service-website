@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
 import { Container, SectionHeader } from "@/components/ui/Layout";
 import { getVehicleBrands } from "@/lib/content";
 
@@ -6,46 +7,58 @@ export function VehicleBrandGrid({ compact = false }: { compact?: boolean }) {
   const brands = getVehicleBrands();
 
   return (
-    <section className="py-20 sm:py-24 border-y border-line bg-surface">
+    <section className="border-y border-line bg-surface py-16 sm:py-20">
       <Container>
         <SectionHeader
           eyebrow="Vehicles we service"
           title="Most makes. The right fluids. The right scan tool."
           description="From daily commuters to European platforms, technicians work to manufacturer data rather than a generic job card."
         />
-        <div className="mt-10 overflow-hidden">
-          <div className="marquee flex w-max gap-3">
+
+        <div className="mt-10 w-full max-w-full overflow-x-clip border-y border-line [contain:paint]">
+          <div className="marquee flex w-max">
             {[...brands, ...brands].map((brand, index) => (
               <Link
                 key={`${brand.id}-${index}`}
                 href={`/vehicles/${brand.id}`}
-                className="min-w-[9.5rem] border border-line px-4 py-5 text-center hover:border-ink/40 hover:bg-canvas"
+                className="flex min-w-[11rem] items-center gap-3 border-r border-line px-4 py-4 transition-colors hover:bg-canvas"
               >
-                <span className="block font-heading text-xl">{brand.logo}</span>
-                <span className="mt-1 block text-xs tracking-[0.12em] uppercase text-muted">
-                  {brand.name}
-                </span>
+                <span className="font-heading text-2xl leading-none text-ink">{brand.logo}</span>
+                <span className="text-[11px] uppercase tracking-[0.12em] text-muted">{brand.name}</span>
               </Link>
             ))}
           </div>
         </div>
+
         {!compact ? (
-          <div className="mt-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="mt-10 border-b border-line">
             {brands.map((brand) => (
               <Link
                 key={brand.id}
                 href={`/vehicles/${brand.id}`}
-                className="border border-line bg-canvas/50 px-4 py-5 hover:border-accent"
+                className="group grid gap-2 border-t border-line py-4 transition-colors hover:bg-canvas sm:grid-cols-[11rem_1fr_auto] sm:items-center sm:gap-6"
               >
-                <p className="font-heading text-lg">{brand.name}</p>
-                <p className="text-xs text-muted mt-1">{brand.models.length} models</p>
+                <p className="font-heading text-2xl leading-none">{brand.name}</p>
+                <p className="text-sm text-muted">
+                  {brand.models.slice(0, 3).map((model) => model.name).join(" · ")}
+                  {brand.models.length > 3 ? ` +${brand.models.length - 3} more` : ""}
+                </p>
+                <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted group-hover:text-accent">
+                  {brand.models.length} models
+                  <ArrowUpRight className="h-4 w-4" />
+                </span>
               </Link>
             ))}
           </div>
         ) : null}
-        <p className="mt-8">
-          <Link href="/vehicles" className="text-sm uppercase tracking-[0.16em] text-ink border-b border-accent pb-0.5">
+
+        <p className="mt-6">
+          <Link
+            href="/vehicles"
+            className="inline-flex items-center gap-2 border-b border-accent pb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink"
+          >
             Browse all brands
+            <ArrowUpRight className="h-4 w-4 text-accent" />
           </Link>
         </p>
       </Container>

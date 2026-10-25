@@ -91,7 +91,7 @@ export default async function AdminAppointmentsPage({
   return (
     <AdminPageFrame title="Appointments" subtitle="Booking management and service status updates">
       {missing ? <RecordNotice message="Record not found." closeHref="/admin/appointments" /> : null}
-      <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+      <div className="border border-line bg-surface p-5">
         <div className="mb-4 flex flex-wrap gap-3">
           {statusOptions.map((status) => (
             <span key={status} className="rounded-full border border-line px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-muted">
@@ -100,15 +100,37 @@ export default async function AdminAppointmentsPage({
           ))}
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-line md:hidden">
+          {appointments.map((appointment) => (
+            <Link
+              key={appointment.id}
+              href={`/admin/appointments?open=${encodeURIComponent(appointment.id)}`}
+              className="block py-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-heading text-lg leading-none">{appointment.id}</p>
+                  <p className="mt-2 font-semibold">{appointment.customerName}</p>
+                </div>
+                <span className="shrink-0 border border-line px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-muted">
+                  {appointment.status}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-muted">{appointment.vehicle} · {appointment.service}</p>
+              <p className="mt-1 text-sm">{appointment.date} · {appointment.time} · {appointment.branch}</p>
+            </Link>
+          ))}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-line text-muted">
                 <th className="px-3 py-3">Booking ID</th>
                 <th className="px-3 py-3">Customer</th>
-                <th className="px-3 py-3">Vehicle</th>
-                <th className="px-3 py-3">Service</th>
-                <th className="px-3 py-3">Branch</th>
+                <th className="hidden px-3 py-3 md:table-cell">Vehicle</th>
+                <th className="hidden px-3 py-3 md:table-cell">Service</th>
+                <th className="hidden px-3 py-3 lg:table-cell">Branch</th>
                 <th className="px-3 py-3">Date</th>
                 <th className="px-3 py-3">Status</th>
                 <th className="px-3 py-3">Actions</th>
@@ -122,9 +144,9 @@ export default async function AdminAppointmentsPage({
                     <p>{appointment.customerName}</p>
                     <p className="text-muted">{appointment.customerPhone}</p>
                   </td>
-                  <td className="px-3 py-3">{appointment.vehicle}</td>
-                  <td className="px-3 py-3">{appointment.service}</td>
-                  <td className="px-3 py-3">{appointment.branch}</td>
+                  <td className="hidden px-3 py-3 md:table-cell">{appointment.vehicle}</td>
+                  <td className="hidden px-3 py-3 md:table-cell">{appointment.service}</td>
+                  <td className="hidden px-3 py-3 lg:table-cell">{appointment.branch}</td>
                   <td className="px-3 py-3">{appointment.date}<br/>{appointment.time}</td>
                   <td className="px-3 py-3">
                     <span className="rounded-full border border-line px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-muted">

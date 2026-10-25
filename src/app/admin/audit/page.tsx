@@ -20,7 +20,7 @@ export default async function AdminAuditPage() {
 
   return (
     <AdminPageFrame title="Agent Audit Log" subtitle="Every tool call the agent made, who invoked it, and the outcome">
-      <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+      <div className="border border-line bg-surface p-5">
         {actions.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted">No agent activity recorded yet.</p>
         ) : (

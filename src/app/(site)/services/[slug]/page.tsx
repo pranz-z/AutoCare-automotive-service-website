@@ -29,55 +29,92 @@ export default async function ServiceDetailPage({ params }: Props) {
 
   return (
     <>
-      <section className="relative min-h-[48vh] bg-primary text-inverted">
-        <Image src={service.image} alt={service.name} fill className="object-cover opacity-45" priority sizes="100vw" />
-        <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/50 to-primary/20" />
-        <Container className="relative z-10 pt-32 pb-16">
-          <p className="text-[12px] uppercase tracking-[0.22em] text-accent">{service.category}</p>
-          <h1 className="font-heading mt-3 text-4xl sm:text-6xl">{service.name}</h1>
-          <p className="mt-4 max-w-2xl text-lg text-inverted/75">{service.description}</p>
-          <div className="mt-6 flex flex-wrap gap-6 text-sm">
-            <span>From {formatPrice(service.priceFrom, service.currency)}</span>
-            <span>{service.duration}</span>
+      <section className="bg-primary pt-[76px] text-inverted">
+        <div className="mx-auto w-full max-w-[96rem] px-2 pb-2 sm:px-3">
+          <div className="grid gap-2 lg:grid-cols-12">
+            <div className="flex min-h-[30rem] flex-col justify-between border border-white/10 p-6 sm:p-9 lg:col-span-7 lg:p-10">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                <p className="meta text-accent">{service.category}</p>
+                <p className="meta text-inverted/45">{service.duration}</p>
+              </div>
+              <div className="py-12">
+                <h1 className="display max-w-4xl text-5xl sm:text-7xl lg:text-[6rem]">{service.name}</h1>
+                <p className="mt-6 max-w-2xl text-base leading-relaxed text-inverted/70 sm:text-lg">
+                  {service.description}
+                </p>
+                <p className="mt-6 font-heading text-2xl">
+                  From {formatPrice(service.priceFrom, service.currency)}
+                </p>
+                <div className="mt-7 flex flex-wrap gap-2">
+                  <Button href={service.bookCta.href}>{service.bookCta.label}</Button>
+                  <Button href="/quote" variant="secondary" className="text-inverted">
+                    Get a quote
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative min-h-[22rem] overflow-hidden border border-white/10 bg-secondary lg:col-span-5">
+              <Image
+                src={service.image}
+                alt={service.name}
+                fill
+                preload
+                className="object-cover opacity-75"
+                sizes="(max-width: 1024px) 100vw, 42vw"
+              />
+              <div className="absolute inset-0 bg-primary/20" />
+              <div className="absolute inset-x-4 bottom-4 border border-white/20 bg-primary/90 p-4 sm:inset-x-6 sm:bottom-6">
+                <p className="meta text-accent">Service note</p>
+                <p className="mt-2 text-sm leading-relaxed text-inverted/70">{service.vehicleCompatibility}</p>
+              </div>
+            </div>
           </div>
-          <div className="mt-8 flex gap-3">
-            <Button href={service.bookCta.href}>{service.bookCta.label}</Button>
-            <Button href="/quote" variant="secondary" className="text-inverted border-white/25">
-              Get a quote
-            </Button>
-          </div>
-        </Container>
-      </section>
-      <Container className="py-16 grid gap-12 lg:grid-cols-[1.2fr_0.8fr]">
-        <div>
-          <h2 className="font-heading text-3xl">What’s included</h2>
-          <ul className="mt-4 space-y-2">
-            {service.included.map((item) => (
-              <li key={item} className="border-b border-line py-3 text-sm">
-                {item}
-              </li>
-            ))}
-          </ul>
-          <h2 className="font-heading text-3xl mt-12">Benefits</h2>
-          <ul className="mt-4 space-y-2 text-sm text-muted">
-            {service.benefits.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-          <h2 className="font-heading text-3xl mt-12">Vehicle compatibility</h2>
-          <p className="mt-3 text-muted">{service.vehicleCompatibility}</p>
         </div>
-        <aside className="border border-line bg-surface p-6 h-fit">
-          <h2 className="font-heading text-2xl">Service notes</h2>
-          <ul className="mt-4 space-y-3">
+      </section>
+
+      <Container className="grid gap-12 py-16 lg:grid-cols-[1.2fr_0.8fr] lg:py-20">
+        <div>
+          <section>
+            <h2 className="font-heading text-4xl">What’s included</h2>
+            <ul className="mt-5 border-t border-line">
+              {service.included.map((item) => (
+                <li key={item} className="border-b border-line py-3.5 text-sm">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="mt-12">
+            <h2 className="font-heading text-4xl">Benefits</h2>
+            <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+              {service.benefits.map((item) => (
+                <li key={item} className="border-l-2 border-accent pl-4 text-sm leading-relaxed text-muted">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="mt-12 border-t border-line pt-8">
+            <h2 className="font-heading text-4xl">Vehicle compatibility</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">{service.vehicleCompatibility}</p>
+          </section>
+        </div>
+
+        <aside className="h-fit border border-line bg-surface p-6">
+          <p className="meta text-accent">Service notes</p>
+          <h2 className="mt-3 font-heading text-3xl">Before you book</h2>
+          <ul className="mt-5 border-t border-line">
             {service.faqs.map((item) => (
-              <li key={item.question}>
+              <li key={item.question} className="border-b border-line py-4">
                 <p className="font-medium">{item.question}</p>
-                <p className="text-sm text-muted mt-1">{item.answer}</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted">{item.answer}</p>
               </li>
             ))}
           </ul>
-          <Button href={service.bookCta.href} className="w-full mt-6">
+          <Button href={service.bookCta.href} className="mt-6 w-full">
             {service.bookCta.label}
           </Button>
         </aside>

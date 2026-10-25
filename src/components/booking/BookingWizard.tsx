@@ -140,20 +140,26 @@ export function BookingWizard({ initialService = "" }: { initialService?: string
   const minDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
+    <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
       <div className="border border-line bg-surface p-5 sm:p-8">
-        <ol className="flex gap-1 overflow-x-auto no-scrollbar mb-8">
-          {steps.map((label, index) => (
-            <li
-              key={label}
-              className={`text-[10px] uppercase tracking-[0.12em] px-2 py-1 border ${
-                index === step ? "bg-primary text-inverted border-primary" : "border-line text-muted"
-              }`}
-            >
-              {String(index + 1).padStart(2, "0")} {label}
-            </li>
-          ))}
-        </ol>
+        <div className="mb-8 border-b border-line pb-5">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="meta text-accent">Step {step + 1}</p>
+              <h2 className="mt-2 font-heading text-3xl leading-none">{steps[step]}</h2>
+            </div>
+            <p className="text-sm text-muted">{Math.min(step + 1, 8)} / 8</p>
+          </div>
+          <div className="mt-5 grid grid-cols-8 gap-1" aria-hidden="true">
+            {steps.slice(0, 8).map((label, index) => (
+              <span
+                key={label}
+                className={`h-1 ${index <= step ? "bg-accent" : "bg-line"}`}
+                title={label}
+              />
+            ))}
+          </div>
+        </div>
 
         {step === 0 ? (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -162,7 +168,7 @@ export function BookingWizard({ initialService = "" }: { initialService?: string
                 key={service.id}
                 type="button"
                 onClick={() => set("service", service.id)}
-                className={`text-left border p-4 ${form.service === service.id ? "border-accent bg-canvas" : "border-line"}`}
+                className={`text-left border p-4 transition-colors ${form.service === service.id ? "border-accent bg-accent/10" : "border-line hover:border-ink/30"}`}
               >
                 <p className="font-heading text-lg">{service.name}</p>
                 <p className="text-sm text-muted mt-1">{service.shortDescription}</p>
@@ -310,7 +316,7 @@ export function BookingWizard({ initialService = "" }: { initialService?: string
                 key={slot}
                 type="button"
                 onClick={() => set("time", slot)}
-                className={`border px-3 py-3 text-sm ${form.time === slot ? "border-accent bg-canvas" : "border-line"}`}
+                className={`min-h-12 border px-3 py-3 text-sm transition-colors ${form.time === slot ? "border-accent bg-accent/10" : "border-line hover:border-ink/30"}`}
               >
                 {slot}
               </button>
@@ -366,7 +372,7 @@ export function BookingWizard({ initialService = "" }: { initialService?: string
           </div>
         ) : null}
 
-        {error ? <p className="mt-4 text-sm text-accent">{error}</p> : null}
+        {error ? <p role="alert" className="mt-4 border-l-2 border-red-600 pl-3 text-sm text-red-700">{error}</p> : null}
 
         {step < 8 ? (
           <div className="mt-8 flex justify-between gap-3">
@@ -380,18 +386,19 @@ export function BookingWizard({ initialService = "" }: { initialService?: string
         ) : null}
       </div>
 
-      <aside className="border border-line bg-primary text-inverted p-6 h-fit">
-        <p className="text-[11px] uppercase tracking-[0.2em] text-accent">Summary</p>
-        <p className="font-heading text-2xl mt-2">{selectedService?.name ?? "Select a service"}</p>
-        <p className="text-sm text-inverted/70 mt-2">
+      <aside className="h-fit border border-line bg-primary p-6 text-inverted lg:sticky lg:top-24">
+        <div className="h-1 w-12 bg-accent" />
+        <p className="meta mt-4 text-accent">Summary</p>
+        <p className="mt-2 font-heading text-3xl leading-none">{selectedService?.name ?? "Select a service"}</p>
+        <p className="mt-3 text-sm text-inverted/65">
           {selectedService
             ? `From ${formatPrice(selectedService.priceFrom)} · ${selectedService.duration}`
             : "Pricing appears once a service is chosen."}
         </p>
-        <ul className="mt-6 space-y-2 text-sm text-inverted/75">
-          <li>{selectedBrand ? `${selectedBrand.name} ${form.model}` : "Vehicle pending"}</li>
-          <li>{form.city || "Location pending"}</li>
-          <li>{form.date && form.time ? `${form.date} · ${form.time}` : "Schedule pending"}</li>
+        <ul className="mt-6 border-t border-white/10 text-sm text-inverted/70">
+          <li className="border-b border-white/10 py-3">{selectedBrand ? `${selectedBrand.name} ${form.model}` : "Vehicle pending"}</li>
+          <li className="border-b border-white/10 py-3">{form.city || "Location pending"}</li>
+          <li className="border-b border-white/10 py-3">{form.date && form.time ? `${form.date} · ${form.time}` : "Schedule pending"}</li>
         </ul>
       </aside>
     </div>

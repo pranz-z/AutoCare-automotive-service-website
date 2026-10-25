@@ -9,13 +9,13 @@ export function Logo({ inverted = false }: { inverted?: boolean }) {
       <Image
         src={company.logo}
         alt=""
-        width={36}
-        height={36}
-        className="h-9 w-9"
+        width={40}
+        height={40}
+        className="h-10 w-10"
         priority
       />
       <span
-        className={`font-heading text-lg tracking-tight font-semibold ${inverted ? "text-inverted" : "text-ink"}`}
+        className={`font-heading text-[1.35rem] font-semibold uppercase leading-none tracking-[0.04em] ${inverted ? "text-inverted" : "text-ink"}`}
       >
         {company.name}
       </span>

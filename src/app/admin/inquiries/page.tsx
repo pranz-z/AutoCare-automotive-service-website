@@ -128,19 +128,41 @@ export default async function AdminInquiriesPage({
   return (
     <AdminPageFrame title="Inquiries" subtitle="Customer issues and escalations needing attention">
       {missing ? <RecordNotice message="Record not found." closeHref="/admin/inquiries" /> : null}
-      <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
-        <div className="overflow-x-auto">
+      <div className="border border-line bg-surface p-5">
+        <div className="divide-y divide-line md:hidden">
+          {adminInquiries.map((inquiry) => (
+            <Link
+              key={inquiry.id}
+              href={`/admin/inquiries?open=${encodeURIComponent(inquiry.id)}`}
+              className="block py-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-heading text-lg leading-none">{inquiry.id}</p>
+                  <p className="mt-2 font-semibold">{inquiry.customer}</p>
+                </div>
+                <span className="shrink-0 border border-line px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-muted">
+                  {inquiry.priority}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-muted">{inquiry.vehicle || "No vehicle provided"}</p>
+              <p className="mt-1 text-sm text-muted">{inquiry.category} · {inquiry.status} · {inquiry.branch}</p>
+            </Link>
+          ))}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-line text-muted">
                 <th className="px-3 py-3">Inquiry ID</th>
                 <th className="px-3 py-3">Customer</th>
-                <th className="px-3 py-3">Vehicle</th>
-                <th className="px-3 py-3">Category</th>
+                <th className="hidden px-3 py-3 md:table-cell">Vehicle</th>
+                <th className="hidden px-3 py-3 md:table-cell">Category</th>
                 <th className="px-3 py-3">Priority</th>
-                <th className="px-3 py-3">AI Triage</th>
+                <th className="hidden px-3 py-3 lg:table-cell">AI Triage</th>
                 <th className="px-3 py-3">Status</th>
-                <th className="px-3 py-3">Branch</th>
+                <th className="hidden px-3 py-3 lg:table-cell">Branch</th>
               </tr>
             </thead>
             <tbody>
@@ -155,12 +177,12 @@ export default async function AdminInquiriesPage({
                     </Link>
                   </td>
                   <td className="px-3 py-3">{inquiry.customer}</td>
-                  <td className="px-3 py-3">{inquiry.vehicle}</td>
-                  <td className="px-3 py-3">{inquiry.category}</td>
+                  <td className="hidden px-3 py-3 md:table-cell">{inquiry.vehicle}</td>
+                  <td className="hidden px-3 py-3 md:table-cell">{inquiry.category}</td>
                   <td className="px-3 py-3">{inquiry.priority}</td>
-                  <td className="px-3 py-3 text-xs text-muted">{inquiry.triageSummary ?? "—"}</td>
+                  <td className="hidden px-3 py-3 text-xs text-muted lg:table-cell">{inquiry.triageSummary ?? "—"}</td>
                   <td className="px-3 py-3">{inquiry.status}</td>
-                  <td className="px-3 py-3">{inquiry.branch}</td>
+                  <td className="hidden px-3 py-3 lg:table-cell">{inquiry.branch}</td>
                 </tr>
               ))}
             </tbody>

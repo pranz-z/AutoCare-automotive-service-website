@@ -43,7 +43,7 @@ export default async function AdminCustomerDetailPage({ params }: { params: Prom
         ← Back to list
       </Link>
       <div className="mt-4 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
+        <section className="border border-line bg-surface p-6">
           <h2 className="font-heading text-2xl">Contact</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <Row label="Email">{customer.email}</Row>
@@ -66,7 +66,7 @@ export default async function AdminCustomerDetailPage({ params }: { params: Prom
           )}
         </section>
 
-        <aside className="space-y-4 rounded-2xl border border-line bg-surface p-6 shadow-sm">
+        <aside className="space-y-4 border border-line bg-surface p-6">
           <h3 className="font-heading text-xl">Recent appointments</h3>
           {appointments.length ? (
             <ul className="space-y-2 text-sm">

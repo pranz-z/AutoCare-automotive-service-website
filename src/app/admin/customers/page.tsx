@@ -47,16 +47,37 @@ export default async function AdminCustomersPage({
   return (
     <AdminPageFrame title="Customers" subtitle="Customer records, vehicle history, and recent bookings">
       {missing ? <RecordNotice message="Record not found." closeHref="/admin/customers" /> : null}
-      <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
-        <div className="overflow-x-auto">
+      <div className="border border-line bg-surface p-5">
+        <div className="divide-y divide-line md:hidden">
+          {adminCustomers.map((customer) => (
+            <Link
+              key={customer.id}
+              href={`/admin/customers?open=${encodeURIComponent(customer.id)}`}
+              className="block py-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{customer.name}</p>
+                  <p className="mt-1 text-sm text-muted">{customer.phone}</p>
+                </div>
+                <span className="shrink-0 border border-line px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-muted">
+                  {customer.totalBookings} bookings
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-muted">Next: {customer.upcomingBooking}</p>
+            </Link>
+          ))}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-line text-muted">
                 <th className="px-3 py-3">Customer</th>
                 <th className="px-3 py-3">Phone</th>
-                <th className="px-3 py-3">Email</th>
+                <th className="hidden px-3 py-3 md:table-cell">Email</th>
                 <th className="px-3 py-3">Bookings</th>
-                <th className="px-3 py-3">Last booking</th>
+                <th className="hidden px-3 py-3 lg:table-cell">Last booking</th>
                 <th className="px-3 py-3">Next booking</th>
               </tr>
             </thead>
@@ -72,9 +93,9 @@ export default async function AdminCustomersPage({
                     </Link>
                   </td>
                   <td className="px-3 py-3">{customer.phone}</td>
-                  <td className="px-3 py-3">{customer.email}</td>
+                  <td className="hidden px-3 py-3 md:table-cell">{customer.email}</td>
                   <td className="px-3 py-3">{customer.totalBookings}</td>
-                  <td className="px-3 py-3">{customer.lastBooking}</td>
+                  <td className="hidden px-3 py-3 lg:table-cell">{customer.lastBooking}</td>
                   <td className="px-3 py-3">{customer.upcomingBooking}</td>
                 </tr>
               ))}

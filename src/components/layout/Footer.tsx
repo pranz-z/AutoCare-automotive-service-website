@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { Container } from "@/components/ui/Layout";
 import { getCompany, getSite, getVehicleBrands } from "@/lib/content";
 
 const socialIcons = {
@@ -50,8 +51,9 @@ export function Footer() {
   });
 
   return (
-    <footer className="bg-primary text-inverted">
-      <div className="mx-auto max-w-[72rem] px-5 sm:px-8 py-16 grid gap-12 lg:grid-cols-[1.2fr_2fr]">
+    <footer className="border-t border-white/10 bg-primary text-inverted">
+      <div className="h-1 w-full bg-accent" />
+      <Container className="grid gap-12 py-16 lg:grid-cols-[1.1fr_2fr] lg:py-20">
         <div>
           <div className="[&_span]:text-inverted">
             <Logo inverted />
@@ -59,17 +61,17 @@ export function Footer() {
           <p className="mt-5 max-w-sm text-sm leading-relaxed text-inverted/65">
             {site.footer.description}
           </p>
-          <ul className="mt-6 space-y-3 text-sm text-inverted/80">
-            <li className="flex gap-2">
-              <Phone className="h-4 w-4 mt-0.5 text-accent" />
-              <a href={company.phoneHref}>{company.phone}</a>
+          <ul className="mt-7 space-y-3 text-sm text-inverted/80">
+            <li className="flex gap-3">
+              <Phone className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+              <a href={company.phoneHref} className="hover:text-inverted">{company.phone}</a>
             </li>
-            <li className="flex gap-2">
-              <Mail className="h-4 w-4 mt-0.5 text-accent" />
-              <a href={`mailto:${company.email}`}>{company.email}</a>
+            <li className="flex gap-3">
+              <Mail className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+              <a href={`mailto:${company.email}`} className="hover:text-inverted">{company.email}</a>
             </li>
-            <li className="flex gap-2">
-              <MapPin className="h-4 w-4 mt-0.5 text-accent" />
+            <li className="flex gap-3">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
               <span>
                 {company.address.city}, {company.address.province}
                 <br />
@@ -77,7 +79,7 @@ export function Footer() {
               </span>
             </li>
           </ul>
-          <div className="mt-6 flex gap-3">
+          <div className="mt-7 flex gap-2">
             {company.socialLinks.map((link) => {
               const Icon = socialIcons[link.platform] ?? Globe;
               return (
@@ -85,7 +87,7 @@ export function Footer() {
                   key={link.platform}
                   href={link.href}
                   aria-label={link.label}
-                  className="h-9 w-9 grid place-items-center border border-white/15 hover:border-accent hover:text-accent"
+                  className="grid h-10 w-10 place-items-center border border-white/15 transition-colors hover:border-accent hover:text-accent"
                 >
                   <Icon className="h-4 w-4" />
                 </a>
@@ -93,14 +95,15 @@ export function Footer() {
             })}
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-8">
+
+        <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
           {columns.map((column) => (
             <div key={column.title}>
-              <p className="text-[12px] tracking-[0.2em] uppercase text-accent mb-4">{column.title}</p>
-              <ul className="space-y-2.5 text-sm text-inverted/70">
+              <p className="meta mb-4 text-accent">{column.title}</p>
+              <ul className="space-y-2.5 text-sm text-inverted/65">
                 {column.links.map((link) => (
                   <li key={`${column.title}-${link.href}-${link.label}`}>
-                    <Link href={link.href} className="hover:text-inverted">
+                    <Link href={link.href} className="transition-colors hover:text-inverted">
                       {link.label}
                     </Link>
                   </li>
@@ -109,20 +112,29 @@ export function Footer() {
             </div>
           ))}
         </div>
+      </Container>
+
+      <div className="overflow-hidden border-t border-white/10">
+        <Container className="py-8">
+          <p className="select-none font-heading text-[19vw] leading-[0.7] tracking-[-0.04em] text-white/[0.045] lg:text-[15vw]">
+            {company.name}
+          </p>
+        </Container>
       </div>
+
       <div className="border-t border-white/10">
-        <div className="mx-auto max-w-[72rem] px-5 sm:px-8 py-5 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between text-xs text-inverted/50">
+        <Container className="flex flex-col gap-3 py-5 text-xs text-inverted/45 sm:flex-row sm:items-center sm:justify-between">
           <p>
             © {year} {company.legalName}. All rights reserved.
           </p>
-          <div className="flex gap-4">
+          <div className="flex gap-5">
             {site.footer.legalLinks.map((link) => (
               <Link key={link.href} href={link.href} className="hover:text-inverted">
                 {link.label}
               </Link>
             ))}
           </div>
-        </div>
+        </Container>
       </div>
     </footer>
   );

@@ -26,7 +26,7 @@ export default async function AdminChatDetailPage({ params }: { params: Promise<
       <Link href="/admin/chats" className="text-xs uppercase tracking-[0.18em] text-muted hover:text-ink">
         ← Back to list
       </Link>
-      <div className="mt-4 rounded-2xl border border-line bg-surface p-6 shadow-sm">
+      <div className="mt-4 border border-line bg-surface p-6">
         <div className="mb-5 flex gap-6 border-b border-line pb-5 text-sm">
           <span><span className="text-muted">Session:</span> {session.id}</span>
           <span><span className="text-muted">Channel:</span> {titleCase(session.channel)}</span>

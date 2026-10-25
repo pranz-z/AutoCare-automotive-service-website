@@ -15,7 +15,7 @@ export default async function AdminAppointmentDetailsPage({ params }: { params: 
   return (
     <AdminPageFrame title={`Booking ${appointment.id}`} subtitle={appointment.service}>
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
+        <section className="border border-line bg-surface p-6">
           <h2 className="font-heading text-2xl">Customer details</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <div><p className="text-[10px] uppercase tracking-[0.2em] text-muted">Customer</p><p className="mt-2 font-semibold">{appointment.customerName}</p></div>
@@ -40,7 +40,7 @@ export default async function AdminAppointmentDetailsPage({ params }: { params: 
           </div>
         </section>
 
-        <aside className="space-y-6 rounded-2xl border border-line bg-surface p-6 shadow-sm">
+        <aside className="space-y-6 border border-line bg-surface p-6">
           <div>
             <p className="text-[10px] uppercase tracking-[0.2em] text-muted">Appointment</p>
             <p className="mt-2 font-medium">{appointment.date} • {appointment.time}</p>

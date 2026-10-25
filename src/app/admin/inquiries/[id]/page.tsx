@@ -38,7 +38,7 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
         ← Back to list
       </Link>
       <div className="mt-4 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
+        <section className="border border-line bg-surface p-6">
           <h2 className="font-heading text-2xl">Message</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <Row label="Customer">{inquiry.customerName}</Row>
@@ -57,7 +57,7 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
           </div>
         </section>
 
-        <aside className="space-y-6 rounded-2xl border border-line bg-surface p-6 shadow-sm">
+        <aside className="space-y-6 border border-line bg-surface p-6">
           <h3 className="font-heading text-xl">AI triage</h3>
           {triage ? (
             <div className="space-y-4 text-sm">

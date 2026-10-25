@@ -10,15 +10,7 @@ import { getCompany, getSite } from "@/lib/content";
 export function Navbar() {
   const site = getSite();
   const company = getCompany();
-  const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
@@ -27,84 +19,82 @@ export function Navbar() {
     };
   }, [open]);
 
-  const bar = scrolled || open
-    ? "bg-primary/95 backdrop-blur-md border-b border-white/10 text-inverted"
-    : "bg-[#071827]/85 backdrop-blur-sm border-b border-white/10 text-inverted";
-
   return (
-    <header className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${bar}`}>
-      <div className="mx-auto flex h-[84px] max-w-[1600px] items-center justify-between gap-5 px-5 sm:px-8 xl:px-10">
-        <div className="flex min-w-[180px] items-center [&_span]:text-inverted">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-primary text-inverted">
+      <div className="mx-auto flex h-[76px] max-w-[96rem] items-center justify-between gap-6 px-4 sm:px-6 lg:px-8">
+        <div className="flex min-w-[170px] items-center [&_span]:text-inverted">
           <Logo inverted />
         </div>
 
-        <nav className="hidden flex-1 items-center justify-center gap-7 text-[11px] font-medium tracking-[0.18em] uppercase text-inverted/80 xl:flex">
+        <nav className="hidden flex-1 items-center justify-center gap-6 text-[11px] font-semibold uppercase tracking-[0.12em] text-inverted/70 xl:flex">
           {site.navigation.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="transition hover:text-inverted"
+              className="border-b border-transparent py-2 transition-colors duration-[var(--t-hover)] hover:border-accent hover:text-inverted"
             >
               {item.label}
             </Link>
           ))}
         </nav>
 
-        <div className="hidden items-center gap-3 lg:flex">
+        <div className="hidden items-center gap-2 lg:flex">
           <a
             href={company.phoneHref}
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-medium tracking-[0.14em] text-inverted/80 uppercase"
+            className="inline-flex min-h-11 items-center gap-2 border border-white/15 px-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-inverted/80 transition-colors hover:border-white/35 hover:text-inverted"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-accent">
-              <Phone className="h-4 w-4" />
-            </span>
+            <Phone className="h-4 w-4 text-accent" />
             <span className="leading-none">{company.phone}</span>
           </a>
 
-          <Button
-            href="/quote"
-            variant="secondary"
-            className="h-[52px] min-w-[150px] border border-white/20 bg-white/5 text-[11px] tracking-[0.18em] text-inverted hover:bg-white/10"
-          >
-            {site.hero.secondaryCTA.label.replace("Free ", "")}
-          </Button>
-
-          <Button
-            href={site.hero.primaryCTA.href}
-            className="h-[52px] min-w-[154px] bg-[#d18b3f] text-[11px] tracking-[0.18em] text-[#091827] shadow-[0_0_0_1px_rgba(255,255,255,0.12)] hover:brightness-110"
-          >
+          <Button href={site.hero.primaryCTA.href} className="min-h-11 px-4">
             {site.hero.primaryCTA.label}
           </Button>
         </div>
 
         <button
           type="button"
-          className="p-2 text-inverted lg:hidden"
+          className="grid h-11 w-11 place-items-center border border-white/15 text-inverted lg:hidden"
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
         >
-          {open ? <X /> : <Menu />}
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </div>
 
       {open ? (
-        <div className="border-t border-white/10 bg-primary px-5 py-6 lg:hidden">
-          <nav className="flex flex-col gap-4 text-lg">
+        <div className="h-[calc(100svh-76px)] overflow-y-auto border-t border-white/10 bg-primary px-4 py-6 lg:hidden">
+          <p className="meta text-accent">Menu</p>
+          <nav className="mt-5 flex flex-col">
             {site.navigation.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className="py-1 text-inverted"
+                className="border-b border-white/10 py-4 font-heading text-2xl uppercase text-inverted"
               >
                 {item.label}
               </Link>
             ))}
           </nav>
-          <div className="mt-6 flex flex-col gap-3">
-            <Button href={site.hero.primaryCTA.href}>{site.hero.primaryCTA.label}</Button>
-            <Button href="/quote" variant="light">
+          <a
+            href={company.phoneHref}
+            className="mt-6 flex items-center gap-3 border border-white/15 px-4 py-3 text-sm text-inverted"
+          >
+            <Phone className="h-4 w-4 text-accent" />
+            {company.phone}
+          </a>
+          <div className="mt-4 grid gap-2">
+            <Button href={site.hero.primaryCTA.href} onClick={() => setOpen(false)}>
+              {site.hero.primaryCTA.label}
+            </Button>
+            <Button
+              href={site.hero.secondaryCTA.href}
+              variant="secondary"
+              className="text-inverted"
+              onClick={() => setOpen(false)}
+            >
               {site.hero.secondaryCTA.label}
             </Button>
           </div>

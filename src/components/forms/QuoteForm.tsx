@@ -132,7 +132,8 @@ export function QuoteForm() {
   if (done) {
     return (
       <div className="border border-line bg-surface p-8">
-        <p className="text-[12px] uppercase tracking-[0.2em] text-accent">Quote requested</p>
+        <div className="h-1 w-12 bg-accent" />
+        <p className="meta mt-4 text-accent">Quote requested</p>
         <h3 className="font-heading text-3xl mt-2">We’ll send a written estimate.</h3>
         <p className="mt-3 text-muted">
           Reference <strong className="text-ink">{done}</strong>. {site.company.name} typically responds within one
@@ -207,7 +208,7 @@ export function QuoteForm() {
         </div>
         {guideError ? <p role="alert" className="mt-2 text-sm text-red-700">{guideError} You can still submit your quote.</p> : null}
         {guide ? (
-          <div className="mt-4 rounded-md border border-line bg-white p-4" aria-live="polite">
+          <div className="mt-4 border border-line bg-canvas p-4" aria-live="polite">
             <p className="text-sm leading-relaxed">{guide.explanation}</p>
             {guide.followUpQuestion ? <p className="mt-2 text-sm font-semibold">{guide.followUpQuestion}</p> : null}
             {guide.services.length ? (
@@ -260,7 +261,7 @@ export function QuoteForm() {
           onChange={(value) => set("notes", value)}
         />
       </div>
-      {error ? <p className="sm:col-span-2 text-sm text-accent">{error}</p> : null}
+      {error ? <p role="alert" className="sm:col-span-2 border-l-2 border-red-600 pl-3 text-sm text-red-700">{error}</p> : null}
       <div className="sm:col-span-2">
         <Button type="submit" disabled={submitting}>{submitting ? "Sending…" : "Request Quote"}</Button>
       </div>

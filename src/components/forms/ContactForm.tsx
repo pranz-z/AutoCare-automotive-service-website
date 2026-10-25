@@ -50,7 +50,8 @@ export function ContactForm() {
   if (done) {
     return (
       <div className="border border-line bg-surface p-8">
-        <p className="text-[12px] uppercase tracking-[0.2em] text-accent">Received</p>
+        <div className="h-1 w-12 bg-accent" />
+        <p className="meta mt-4 text-accent">Received</p>
         <h3 className="font-heading text-2xl mt-2">Message sent.</h3>
         <p className="mt-2 text-muted">
           {company.name} will reply to {email}. For urgent work, call {company.phone}.
@@ -60,7 +61,7 @@ export function ContactForm() {
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-4">
+    <form onSubmit={submit} className="grid gap-4 border border-line bg-surface p-5 sm:p-8">
       <Field label="Name" name="name" required value={name} onChange={setName} />
       <Field label="Email" name="email" type="email" required value={email} onChange={setEmail} />
       <Field label="Phone" name="phone" value={phone} onChange={setPhone} />
@@ -78,7 +79,7 @@ export function ContactForm() {
         ]}
       />
       <Field label="Message" name="message" as="textarea" required value={message} onChange={setMessage} />
-      {error ? <p className="text-sm text-accent">{error}</p> : null}
+      {error ? <p role="alert" className="border-l-2 border-red-600 pl-3 text-sm text-red-700">{error}</p> : null}
       <Button type="submit" disabled={submitting}>{submitting ? "Sending…" : "Send message"}</Button>
     </form>
   );
